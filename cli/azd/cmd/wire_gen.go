@@ -9,6 +9,7 @@ package cmd
 import (
 	"context"
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
+	"github.com/azure/azure-dev/cli/azd/cmd/middleware"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
@@ -448,4 +449,34 @@ func initConfigResetAction(console input.Console, ctx context.Context, o *intern
 	userConfigManager := config.NewUserConfigManager()
 	cmdConfigResetAction := newConfigResetAction(userConfigManager, args)
 	return cmdConfigResetAction, nil
+}
+
+func initDebugMiddleware(flags any, rootOptions *internal.GlobalCommandOptions, actionOptions *actions.ActionOptions, console input.Console) (middleware.Middleware, error) {
+	debugMiddleware := middleware.NewDebugMiddleware(console)
+	return debugMiddleware, nil
+}
+
+func initTelemetryMiddleware(flags any, rootOptions *internal.GlobalCommandOptions, actionOptions *actions.ActionOptions, console input.Console) (middleware.Middleware, error) {
+	telemetryMiddleware := middleware.NewTelemetryMiddleware(actionOptions)
+	return telemetryMiddleware, nil
+}
+
+func initCommandHooksMiddleware(flags any, rootOptions *internal.GlobalCommandOptions, actionOptions *actions.ActionOptions, console input.Console) (middleware.Middleware, error) {
+	azdContext, err := newAzdContext()
+	if err != nil {
+		return nil, err
+	}
+	cmdEnvFlag := newEnvFlagsFromCmd(flags, rootOptions)
+	environment, err := newEnvironmentFromAzdContext(azdContext, cmdEnvFlag, rootOptions)
+	if err != nil {
+		return nil, err
+	}
+	projectConfig, err := newProjectConfigFromEnv(azdContext, environment)
+	if err != nil {
+		return nil, err
+	}
+	commandRunner := newCommandRunnerFromConsole(console)
+	commandHooks := newCommandHooksFromEnv(console, commandRunner, azdContext, environment, projectConfig)
+	commandHooksMiddleware := middleware.NewCommandHooksMiddleware(actionOptions, projectConfig, commandHooks)
+	return commandHooksMiddleware, nil
 }

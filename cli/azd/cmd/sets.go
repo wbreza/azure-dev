@@ -6,18 +6,23 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
+	"github.com/azure/azure-dev/cli/azd/cmd/middleware"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
+	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
+	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
+	"github.com/azure/azure-dev/cli/azd/pkg/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/templates"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/azcli"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/git"
@@ -106,6 +111,77 @@ func newCredential(ctx context.Context, authManager *auth.Manager) (azcore.Token
 	}
 
 	return credential, nil
+}
+
+// Attempts to retrieve any environment flags available
+// If found, return the envFlags otherwise an empty flag set.
+func newEnvFlagsFromCmd(flags any, commandOptions *internal.GlobalCommandOptions) *envFlag {
+	flagsWithEnv, ok := flags.(flagsWithEnv)
+	if !ok {
+		return &envFlag{}
+	}
+
+	envFlags := flagsWithEnv.Env()
+	if envFlags.environmentName != "" {
+		log.Printf("Found environment name with value '%s'", envFlags.environmentName)
+	}
+
+	return envFlags
+}
+
+// Creates a new azd environment from the azd context and command flags/options
+func newEnvironmentFromAzdContext(
+	azdContext *azdcontext.AzdContext,
+	envFlags *envFlag,
+	commandOptions *internal.GlobalCommandOptions,
+) (*environment.Environment, error) {
+	environmentName := envFlags.environmentName
+	var err error
+
+	if environmentName == "" {
+		defaultEnvName, err := azdContext.GetDefaultEnvironmentName()
+		if err != nil {
+			return nil, err
+		}
+
+		environmentName = defaultEnvName
+	}
+
+	env, err := environment.GetEnvironment(azdContext, environmentName)
+	if err != nil {
+		return nil, err
+	}
+
+	return env, nil
+}
+
+// Creates a new project config for the specified environment
+func newProjectConfigFromEnv(
+	azdContext *azdcontext.AzdContext,
+	env *environment.Environment,
+) (*project.ProjectConfig, error) {
+	projectConfig, err := project.LoadProjectConfig(azdContext.ProjectPath(), env)
+	if err != nil {
+		return nil, err
+	}
+
+	return projectConfig, nil
+}
+
+// Creates extensibility command hooks from azd context, environment & project configuration
+func newCommandHooksFromEnv(
+	console input.Console,
+	commandRunner exec.CommandRunner,
+	azdContext *azdcontext.AzdContext,
+	env *environment.Environment,
+	projectConfig *project.ProjectConfig) *ext.CommandHooks {
+	return ext.NewCommandHooks(
+		commandRunner,
+		console,
+		projectConfig.Scripts,
+		azdContext.ProjectDirectory(),
+		env.Environ(),
+	)
 }
 
 var FormattedConsoleSet = wire.NewSet(
@@ -276,6 +352,25 @@ var ConfigResetCmdSet = wire.NewSet(
 	CommonSet,
 	newConfigResetAction,
 	wire.Bind(new(actions.Action), new(*configResetAction)))
+
+var DebugMiddlewareSet = wire.NewSet(
+	CommonSet,
+	middleware.NewDebugMiddleware,
+	wire.Bind(new(middleware.Middleware), new(*middleware.DebugMiddleware)))
+
+var TelemetryMiddlewareSet = wire.NewSet(
+	CommonSet,
+	middleware.NewTelemetryMiddleware,
+	wire.Bind(new(middleware.Middleware), new(*middleware.TelemetryMiddleware)))
+
+var CommandHooksMiddlewareSet = wire.NewSet(
+	CommonSet,
+	newEnvFlagsFromCmd,
+	newEnvironmentFromAzdContext,
+	newProjectConfigFromEnv,
+	newCommandHooksFromEnv,
+	middleware.NewCommandHooksMiddleware,
+	wire.Bind(new(middleware.Middleware), new(*middleware.CommandHooksMiddleware)))
 
 var AuthTokenCmdSet = wire.NewSet(
 	CommonSet,
