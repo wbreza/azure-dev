@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
@@ -49,6 +51,15 @@ func NewCommandHooks(
 	cwd string,
 	envVars []string,
 ) *CommandHooks {
+	if cwd == "" {
+		osWd, err := os.Getwd()
+		if err != nil {
+			panic(err)
+		}
+
+		cwd = osWd
+	}
+
 	return &CommandHooks{
 		commandRunner: commandRunner,
 		console:       console,
@@ -91,6 +102,48 @@ func (h *CommandHooks) RunScripts(ctx context.Context, hookType HookType, comman
 	return nil
 }
 
+// Gets the script to execute based on the script configuration values
+// For inline scripts this will also create a temporary script file to execute
+func (h *CommandHooks) GetScript(scriptConfig *ScriptConfig) (tools.Script, error) {
+	if scriptConfig.Location == "" {
+		if scriptConfig.Path != "" {
+			scriptConfig.Location = ScriptLocationPath
+		} else if scriptConfig.Script != "" {
+			scriptConfig.Location = ScriptLocationInline
+		}
+	}
+
+	if scriptConfig.Location == ScriptLocationInline {
+		tempScript, err := createTempScript(scriptConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		scriptConfig.Path = tempScript
+	}
+
+	if scriptConfig.Type == "" {
+		scriptType, err := inferScriptTypeFromFilePath(scriptConfig.Path)
+		if err != nil {
+			return nil, err
+		}
+
+		scriptConfig.Type = scriptType
+	}
+
+	switch scriptConfig.Type {
+	case ScriptTypeBash:
+		return bash.NewBashScript(h.commandRunner, h.cwd, h.envVars), nil
+	case ScriptTypePowershell:
+		return powershell.NewPowershellScript(h.commandRunner, h.cwd, h.envVars), nil
+	default:
+		return nil, fmt.Errorf(
+			"script type '%s' is not a valid option. Only Bash and powershell scripts are supported",
+			scriptConfig.Type,
+		)
+	}
+}
+
 func (h *CommandHooks) getScriptsForHook(prefix HookType, commands []string) []*ScriptConfig {
 	validHookNames := []string{}
 
@@ -103,15 +156,104 @@ func (h *CommandHooks) getScriptsForHook(prefix HookType, commands []string) []*
 		validHookNames = append(validHookNames, strings.ToLower(string(prefix)+commandName))
 	}
 
+	allHooks := []*ScriptConfig{}
+	explicitHooks := h.getExplicitHooks(prefix, validHookNames)
+	implicitHooks := h.getImplicitHooks(prefix, validHookNames)
+
+	allHooks = append(allHooks, explicitHooks...)
+
+	// Only append implicit hooks that were not already wired up explicitly.
+	for _, implicitHook := range implicitHooks {
+		index := slices.IndexFunc(allHooks, func(hook *ScriptConfig) bool {
+			return implicitHook.Name == hook.Name
+		})
+
+		if index >= 0 {
+			log.Printf(
+				"Skipping command hook @ '%s'. An explicit hook for '%s' was already defined in azure.yaml.\n",
+				implicitHook.Path,
+				implicitHook.Name,
+			)
+			continue
+		}
+
+		allHooks = append(allHooks, implicitHook)
+	}
+
+	return allHooks
+}
+
+func (h *CommandHooks) getExplicitHooks(prefix HookType, validHookNames []string) []*ScriptConfig {
 	matchingScripts := []*ScriptConfig{}
+
+	// Find explicitly configured hooks from azure.yaml
 	for scriptName, scriptConfig := range h.scripts {
+		if scriptConfig == nil {
+			continue
+		}
+
 		index := slices.IndexFunc(validHookNames, func(hookName string) bool {
 			return hookName == scriptName
 		})
 
 		if index > -1 {
+			// If the script config includes an OS specific configuration use that instead
+			if runtime.GOOS == "windows" && scriptConfig.Windows != nil {
+				scriptConfig = scriptConfig.Windows
+			} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && scriptConfig.Linux != nil {
+				scriptConfig = scriptConfig.Linux
+			}
+
 			scriptConfig.Name = scriptName
+			scriptConfig.Path = strings.ReplaceAll(scriptConfig.Path, "/", string(os.PathSeparator))
 			matchingScripts = append(matchingScripts, scriptConfig)
+		}
+	}
+
+	return matchingScripts
+}
+
+func (h *CommandHooks) getImplicitHooks(prefix HookType, validHookNames []string) []*ScriptConfig {
+	matchingScripts := []*ScriptConfig{}
+
+	hooksDir := filepath.Join(h.cwd, ".azure", "hooks")
+	files, err := os.ReadDir(hooksDir)
+	if err != nil {
+		return matchingScripts
+	}
+
+	// Find implicit / convention based hooks in the .azure/hooks directory
+	// Find `predeploy.sh` or similar matching a hook prefix & valid command name
+	for _, file := range files {
+		fileName := file.Name()
+		fileNameWithoutExt := strings.TrimSuffix(fileName, path.Ext(fileName))
+
+		index := slices.IndexFunc(validHookNames, func(hookName string) bool {
+			return !file.IsDir() && hookName == fileNameWithoutExt
+		})
+
+		if index > -1 {
+			scriptType, err := inferScriptTypeFromFilePath(fileName)
+			if err != nil {
+				log.Printf("Found script hook '%s', but type is not supported. %s\n", fileName, err.Error())
+				continue
+			}
+
+			relativePath, err := filepath.Rel(h.cwd, filepath.Join(hooksDir, fileName))
+			if err != nil {
+				// This err should never happen since we are only looking for files inside the specified cwd.
+				log.Printf("Found script hook '%s', but is outside of project folder. Error: %s\n", file.Name(), err.Error())
+				continue
+			}
+
+			scriptConfig := ScriptConfig{
+				Name:     fileNameWithoutExt,
+				Path:     relativePath,
+				Location: ScriptLocationPath,
+				Type:     scriptType,
+			}
+
+			matchingScripts = append(matchingScripts, &scriptConfig)
 		}
 	}
 
@@ -149,7 +291,7 @@ func (h *CommandHooks) execScript(ctx context.Context, scriptConfig *ScriptConfi
 		)
 	}
 
-	log.Printf("Executing script '%s'", scriptConfig.Path)
+	log.Printf("Executing script '%s'\n", scriptConfig.Path)
 	_, err = script.Execute(ctx, scriptConfig.Path, scriptInteractive)
 	if err != nil {
 		execErr := fmt.Errorf("failed executing script '%s' : %w", scriptConfig.Path, err)
@@ -170,50 +312,17 @@ func (h *CommandHooks) execScript(ctx context.Context, scriptConfig *ScriptConfi
 	return nil
 }
 
-// Gets the script to execute based on the script configuration values
-// For inline scripts this will also create a temporary script file to execute
-func (h *CommandHooks) GetScript(scriptConfig *ScriptConfig) (tools.Script, error) {
-	if scriptConfig.Location == "" {
-		if scriptConfig.Path != "" {
-			scriptConfig.Location = ScriptLocationPath
-		} else if scriptConfig.Script != "" {
-			scriptConfig.Location = ScriptLocationInline
-		}
-	}
-
-	if scriptConfig.Location == ScriptLocationInline {
-		tempScript, err := createTempScript(scriptConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		scriptConfig.Path = tempScript
-	}
-
-	if scriptConfig.Type == "" {
-		fileExtension := filepath.Ext(scriptConfig.Path)
-		switch fileExtension {
-		case ".sh":
-			scriptConfig.Type = ScriptTypeBash
-		case ".ps1":
-			scriptConfig.Type = ScriptTypePowershell
-		default:
-			return nil, fmt.Errorf(
-				"script with file extension '%s' is not valid. Only '.sh' and '.ps1' are supported",
-				fileExtension,
-			)
-		}
-	}
-
-	switch scriptConfig.Type {
-	case ScriptTypeBash:
-		return bash.NewBashScript(h.commandRunner, h.cwd, h.envVars), nil
-	case ScriptTypePowershell:
-		return powershell.NewPowershellScript(h.commandRunner, h.cwd, h.envVars), nil
+func inferScriptTypeFromFilePath(path string) (ScriptType, error) {
+	fileExtension := filepath.Ext(path)
+	switch fileExtension {
+	case ".sh":
+		return ScriptTypeBash, nil
+	case ".ps1":
+		return ScriptTypePowershell, nil
 	default:
-		return nil, fmt.Errorf(
-			"script type '%s' is not a valid option. Only Bash and powershell scripts are supported",
-			scriptConfig.Type,
+		return "", fmt.Errorf(
+			"script with file extension '%s' is not valid. Only '.sh' and '.ps1' are supported",
+			fileExtension,
 		)
 	}
 }

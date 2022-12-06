@@ -25,4 +25,8 @@ type ScriptConfig struct {
 	ContinueOnError bool `yaml:"continueOnError,omitempty"`
 	// When set to true will bind the stdin, stdout & stderr to the running console
 	Interactive bool `yaml:"interactive,omitempty"`
+	// When running on windows use this override config
+	Windows *ScriptConfig `yaml:"windows,omitempty"`
+	// When running on linux/macos use this override config
+	Linux *ScriptConfig `yaml:"linux,omitempty"`
 }

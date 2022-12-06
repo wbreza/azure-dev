@@ -29,8 +29,7 @@ func NewCommandHooksMiddleware(
 
 func (m *CommandHooksMiddleware) Run(ctx context.Context, options Options, next NextFn) (*actions.ActionResult, error) {
 	if m.projectConfig.Scripts == nil || len(m.projectConfig.Scripts) == 0 {
-		log.Println("project does not contain any command hooks.")
-		return next(ctx)
+		log.Println("project does not contain any explicit command hooks.")
 	}
 
 	var actionResult *actions.ActionResult
