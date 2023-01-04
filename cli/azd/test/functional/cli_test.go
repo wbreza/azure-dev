@@ -54,7 +54,7 @@ func Test_CLI_Init_AsksForSubscriptionIdAndCreatesEnvAndProjectFile(t *testing.T
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	_, err := cli.RunCommandWithStdIn(
 		ctx,
@@ -86,7 +86,7 @@ func Test_CLI_Init_CanUseTemplate(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	_, err := cli.RunCommandWithStdIn(
 		ctx,
@@ -120,7 +120,7 @@ func Test_CLI_InfraCreateAndDelete(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "storage")
 	require.NoError(t, err, "failed expanding sample")
@@ -174,7 +174,7 @@ func Test_CLI_InfraCreateAndDeleteUpperCase(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "storage")
 	require.NoError(t, err, "failed expanding sample")
@@ -229,7 +229,7 @@ func Test_CLI_DeployInvalidName(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "webapp")
 	require.NoError(t, err, "failed expanding sample")
@@ -255,7 +255,7 @@ func Test_CLI_RestoreCommand(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "restoreapp")
 	require.NoError(t, err, "failed expanding sample")
@@ -414,7 +414,7 @@ func Test_CLI_InfraCreateAndDeleteResourceTerraform(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "resourcegroupterraform")
 	require.NoError(t, err, "failed expanding sample")
@@ -453,7 +453,7 @@ func Test_CLI_InfraCreateAndDeleteResourceTerraformRemote(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), fmt.Sprintf("AZURE_LOCATION=%s", location))
+	cli.Env = []string{fmt.Sprintf("AZURE_LOCATION=%s", location)}
 
 	err := copySample(dir, "resourcegroupterraformremote")
 	require.NoError(t, err, "failed expanding sample")

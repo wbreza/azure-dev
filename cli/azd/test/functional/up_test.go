@@ -41,7 +41,7 @@ func Test_CLI_Up_Down_WebApp(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "webapp")
 	require.NoError(t, err, "failed expanding sample")
@@ -157,7 +157,7 @@ func Test_CLI_Up_Down_FuncApp(t *testing.T) {
 
 	cli := azdcli.NewCLI(t)
 	cli.WorkingDirectory = dir
-	cli.Env = append(os.Environ(), "AZURE_LOCATION=eastus2")
+	cli.Env = []string{"AZURE_LOCATION=eastus2"}
 
 	err := copySample(dir, "funcapp")
 	require.NoError(t, err, "failed expanding sample")
@@ -240,9 +240,10 @@ func Test_CLI_Up_Down_ContainerApp(t *testing.T) {
 
 			cli := azdcli.NewCLI(t)
 			cli.WorkingDirectory = dir
-			cli.Env = append(os.Environ(),
+			cli.Env = []string{
 				"AZURE_LOCATION=eastus2",
-				fmt.Sprintf("AZURE_PROVISION_CONTAINER_APP=%t", tc.provisionContainerApp))
+				fmt.Sprintf("AZURE_PROVISION_CONTAINER_APP=%t", tc.provisionContainerApp),
+			}
 
 			err := copySample(dir, "containerapp")
 			require.NoError(t, err, "failed expanding sample")

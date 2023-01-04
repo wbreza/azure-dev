@@ -8,16 +8,17 @@
 package azdcli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/azure/azure-dev/cli/azd/cmd"
 )
 
 const (
@@ -52,16 +53,30 @@ func NewCLI(t *testing.T) *CLI {
 func (cli *CLI) RunCommandWithStdIn(ctx context.Context, stdin string, args ...string) (*CliResult, error) {
 	description := "azd " + strings.Join(args, " ") + " in " + cli.WorkingDirectory
 
-	cmd := exec.CommandContext(ctx, cli.AzdLocation, args...)
+	// Set env vars
+	if len(cli.Env) > 0 {
+		for _, envVar := range cli.Env {
+			pair := strings.Split(envVar, "=")
+			os.Setenv(pair[0], pair[1])
+			defer os.Unsetenv(pair[0])
+		}
+	}
+
+	// Setup working directory
 	if cli.WorkingDirectory != "" {
-		cmd.Dir = cli.WorkingDirectory
-	}
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 
-	if stdin != "" {
-		cmd.Stdin = strings.NewReader(stdin)
-	}
+		err = os.Chdir(cli.WorkingDirectory)
+		if err != nil {
+			return nil, err
+		}
 
-	cmd.Env = cli.Env
+		// Reset working directory after test
+		defer os.Chdir(wd)
+	}
 
 	// we run a background goroutine to report a heartbeat in the logs while the command
 	// is still running. This makes it easy to see what's still in progress if we hit a timeout.
@@ -73,15 +88,28 @@ func (cli *CLI) RunCommandWithStdIn(ctx context.Context, stdin string, args ...s
 		done <- struct{}{}
 	}()
 
-	var stderr, stdout bytes.Buffer
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
+	var stdErr, stdOut strings.Builder
+	stdIn := strings.NewReader(stdin)
+
+	origArgs := os.Args
+	os.Args = []string{"azd"}
+	os.Args = append(os.Args, args...)
+
+	defer func() {
+		os.Args = origArgs
+	}()
+
+	cmd := cmd.NewRootCmd(false)
+	cmd.SetIn(stdIn)
+	cmd.SetOut(&stdOut)
+	cmd.SetErr(&stdErr)
+
+	err := cmd.ExecuteContext(ctx)
 
 	result := &CliResult{}
-	result.Stdout = stdout.String()
-	result.Stderr = stderr.String()
-	result.ExitCode = cmd.ProcessState.ExitCode()
+	result.Stdout = stdOut.String()
+	result.Stderr = stdErr.String()
+	//result.ExitCode = cmd.ProcessState.ExitCode()
 
 	for _, line := range strings.Split(result.Stdout, "\n") {
 		cli.T.Logf("[stdout] %s", line)
