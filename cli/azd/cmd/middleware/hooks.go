@@ -10,12 +10,13 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
 )
 
 type HooksMiddleware struct {
-	env           *environment.Environment
-	projectConfig *project.ProjectConfig
+	env           *lazy.Lazy[*environment.Environment]
+	projectConfig *lazy.Lazy[*project.ProjectConfig]
 	commandRunner exec.CommandRunner
 	console       input.Console
 	options       *Options
@@ -23,8 +24,8 @@ type HooksMiddleware struct {
 
 // Creates a new instance of the Hooks middleware
 func NewHooksMiddleware(
-	env *environment.Environment,
-	projectConfig *project.ProjectConfig,
+	env *lazy.Lazy[*environment.Environment],
+	projectConfig *lazy.Lazy[*project.ProjectConfig],
 	commandRunner exec.CommandRunner,
 	console input.Console,
 	options *Options,
@@ -50,19 +51,31 @@ func (m *HooksMiddleware) Run(ctx context.Context, next NextFn) (*actions.Action
 // Register command level hooks for the executing cobra command & action
 // Invokes the middleware next function
 func (m *HooksMiddleware) registerCommandHooks(ctx context.Context, next NextFn) (*actions.ActionResult, error) {
-	if m.projectConfig.Hooks == nil || len(m.projectConfig.Hooks) == 0 {
+	projectConfig, err := m.projectConfig.GetValue()
+	if err != nil {
+		log.Printf("failed loading project configuration, %s\n", err.Error())
+		return next(ctx)
+	}
+
+	env, err := m.env.GetValue()
+	if err != nil {
+		log.Printf("failed loading environment, %s\n", err.Error())
+		return next(ctx)
+	}
+
+	if projectConfig.Hooks == nil || len(projectConfig.Hooks) == 0 {
 		log.Println("project does not contain any command hooks.")
 		return next(ctx)
 	}
 
-	hooksManager := ext.NewHooksManager(m.projectConfig.Path)
+	hooksManager := ext.NewHooksManager(projectConfig.Path)
 	hooksRunner := ext.NewHooksRunner(
 		hooksManager,
 		m.commandRunner,
 		m.console,
-		m.projectConfig.Path,
-		m.projectConfig.Hooks,
-		m.env.Environ(),
+		projectConfig.Path,
+		projectConfig.Hooks,
+		env.Environ(),
 	)
 
 	var actionResult *actions.ActionResult
@@ -70,7 +83,7 @@ func (m *HooksMiddleware) registerCommandHooks(ctx context.Context, next NextFn)
 	commandNames := []string{m.options.Name}
 	commandNames = append(commandNames, m.options.Aliases...)
 
-	err := hooksRunner.Invoke(ctx, commandNames, func() error {
+	err = hooksRunner.Invoke(ctx, commandNames, func() error {
 		result, err := next(ctx)
 		if err != nil {
 			return err
@@ -90,7 +103,19 @@ func (m *HooksMiddleware) registerCommandHooks(ctx context.Context, next NextFn)
 // Registers event handlers for all services within the project configuration
 // Runs hooks for each matching event handler
 func (m *HooksMiddleware) registerServiceHooks(ctx context.Context) error {
-	for serviceName, service := range m.projectConfig.Services {
+	projectConfig, err := m.projectConfig.GetValue()
+	if err != nil {
+		log.Printf("failed loading project configuration, %s\n", err.Error())
+		return nil
+	}
+
+	env, err := m.env.GetValue()
+	if err != nil {
+		log.Printf("failed loading environment, %s\n", err.Error())
+		return nil
+	}
+
+	for serviceName, service := range projectConfig.Services {
 		// If the service hasn't configured any hooks we can continue on.
 		if service.Hooks == nil || len(service.Hooks) == 0 {
 			log.Printf("service '%s' does not require any command hooks.\n", serviceName)
@@ -104,7 +129,7 @@ func (m *HooksMiddleware) registerServiceHooks(ctx context.Context) error {
 			m.console,
 			service.Path(),
 			service.Hooks,
-			m.env.Environ(),
+			env.Environ(),
 		)
 
 		for hookName, hookConfig := range service.Hooks {
