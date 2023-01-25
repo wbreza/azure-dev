@@ -20,7 +20,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
-	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
 	"github.com/azure/azure-dev/cli/azd/pkg/templates"
@@ -98,7 +97,6 @@ func (i *initFlags) setCommon(envFlag *envFlag) {
 
 type initAction struct {
 	azCli           azcli.AzCli
-	azdCtx          *lazy.Lazy[*azdcontext.AzdContext]
 	accountManager  *account.Manager
 	console         input.Console
 	cmdRun          exec.CommandRunner
@@ -109,7 +107,6 @@ type initAction struct {
 
 func newInitAction(
 	azCli azcli.AzCli,
-	azdCtx *lazy.Lazy[*azdcontext.AzdContext],
 	accountManager *account.Manager,
 	cmdRun exec.CommandRunner,
 	console input.Console,
@@ -118,7 +115,6 @@ func newInitAction(
 	repoInitializer *repository.Initializer) actions.Action {
 	return &initAction{
 		azCli:           azCli,
-		azdCtx:          azdCtx,
 		accountManager:  accountManager,
 		console:         console,
 		cmdRun:          cmdRun,
