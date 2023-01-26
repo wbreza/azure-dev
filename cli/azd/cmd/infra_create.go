@@ -7,11 +7,12 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/internal"
-	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
+	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
@@ -64,6 +65,8 @@ func newInfraCreateCmd() *cobra.Command {
 
 type infraCreateAction struct {
 	flags         *infraCreateFlags
+	env           *lazy.Lazy[*environment.Environment]
+	projConfig    *lazy.Lazy[*project.ProjectConfig]
 	azCli         azcli.AzCli
 	formatter     output.Formatter
 	writer        io.Writer
@@ -73,6 +76,8 @@ type infraCreateAction struct {
 
 func newInfraCreateAction(
 	flags *infraCreateFlags,
+	env *lazy.Lazy[*environment.Environment],
+	projConfig *lazy.Lazy[*project.ProjectConfig],
 	azCli azcli.AzCli,
 	console input.Console,
 	formatter output.Formatter,
@@ -81,6 +86,8 @@ func newInfraCreateAction(
 ) actions.Action {
 	return &infraCreateAction{
 		flags:         flags,
+		env:           env,
+		projConfig:    projConfig,
 		azCli:         azCli,
 		formatter:     formatter,
 		writer:        writer,
@@ -90,11 +97,12 @@ func newInfraCreateAction(
 }
 
 func (i *infraCreateAction) Run(ctx context.Context) (*actions.ActionResult, error) {
-	// We call `NewAzdContext` here instead of having the value injected because we want to delay the
-	// walk for the context until this command has started to execute (for example, in the case of `up`,
-	// the context is not created until the init action actually runs, which is after the infraCreateAction
-	// object is created.
-	azdCtx, err := azdcontext.NewAzdContext()
+	env, err := i.env.GetValue()
+	if err != nil {
+		return nil, err
+	}
+
+	projConfig, err := i.projConfig.GetValue()
 	if err != nil {
 		return nil, err
 	}
@@ -105,22 +113,12 @@ func (i *infraCreateAction) Run(ctx context.Context) (*actions.ActionResult, err
 		TitleNote: "Provisioning Azure resources can take some time"},
 	)
 
-	env, err := loadOrInitEnvironment(ctx, &i.flags.environmentName, azdCtx, i.console, i.azCli)
-	if err != nil {
-		return nil, fmt.Errorf("loading environment: %w", err)
-	}
-
-	prj, err := project.GetCurrent()
-	if err != nil {
-		return nil, fmt.Errorf("loading project: %w", err)
-	}
-
-	if err = prj.Initialize(ctx, env, i.commandRunner); err != nil {
+	if err := projConfig.Initialize(ctx, env, i.commandRunner); err != nil {
 		return nil, err
 	}
 
 	infraManager, err := provisioning.NewManager(
-		ctx, env, prj.Path, prj.Infra, i.console.IsUnformatted(), i.azCli, i.console, i.commandRunner,
+		ctx, env, projConfig.Path, projConfig.Infra, i.console.IsUnformatted(), i.azCli, i.console, i.commandRunner,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating provisioning manager: %w", err)
@@ -158,9 +156,9 @@ func (i *infraCreateAction) Run(ctx context.Context) (*actions.ActionResult, err
 		return nil, fmt.Errorf("deployment failed: %w", err)
 	}
 
-	for _, svc := range prj.Services {
+	for _, svc := range projConfig.Services {
 		eventArgs := project.ServiceLifecycleEventArgs{
-			Project: prj,
+			Project: projConfig,
 			Service: svc,
 			Args: map[string]any{
 				"bicepOutput": deployResult.Deployment.Outputs,
@@ -193,7 +191,7 @@ func (i *infraCreateAction) Run(ctx context.Context) (*actions.ActionResult, err
 	return &actions.ActionResult{
 		Message: &actions.ResultMessage{
 			Header:   "Your project has been provisioned!",
-			FollowUp: getResourceGroupFollowUp(ctx, i.formatter, i.azCli, prj, env),
+			FollowUp: getResourceGroupFollowUp(ctx, i.formatter, i.azCli, projConfig, env),
 		},
 	}, nil
 }

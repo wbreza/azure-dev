@@ -12,9 +12,11 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/internal"
+	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
@@ -84,6 +86,9 @@ After the deployment is complete, the endpoint is printed. To start the service,
 
 type deployAction struct {
 	flags         *deployFlags
+	azdCtx        *lazy.Lazy[*azdcontext.AzdContext]
+	env           *lazy.Lazy[*environment.Environment]
+	projConfig    *lazy.Lazy[*project.ProjectConfig]
 	azCli         azcli.AzCli
 	formatter     output.Formatter
 	writer        io.Writer
@@ -93,6 +98,9 @@ type deployAction struct {
 
 func newDeployAction(
 	flags *deployFlags,
+	azdCtx *lazy.Lazy[*azdcontext.AzdContext],
+	env *lazy.Lazy[*environment.Environment],
+	projConfig *lazy.Lazy[*project.ProjectConfig],
 	azCli azcli.AzCli,
 	commandRunner exec.CommandRunner,
 	console input.Console,
@@ -101,6 +109,9 @@ func newDeployAction(
 ) actions.Action {
 	return &deployAction{
 		flags:         flags,
+		azdCtx:        azdCtx,
+		env:           env,
+		projConfig:    projConfig,
 		azCli:         azCli,
 		formatter:     formatter,
 		writer:        writer,
@@ -115,23 +126,19 @@ type DeploymentResult struct {
 }
 
 func (d *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) {
-	// We call `NewAzdContext` here instead of having the value injected because we want to delay the
-	// walk for the context until this command has started to execute (for example, in the case of `up`,
-	// the context is not created until the init action actually runs, which is after the infraCreateAction
-	// object is created.
-	azdCtx, err := azdcontext.NewAzdContext()
+	azdCtx, err := d.azdCtx.GetValue()
 	if err != nil {
 		return nil, err
 	}
 
-	env, err := loadOrInitEnvironment(ctx, &d.flags.environmentName, azdCtx, d.console, d.azCli)
+	env, err := d.env.GetValue()
 	if err != nil {
-		return nil, fmt.Errorf("loading environment: %w", err)
+		return nil, err
 	}
 
-	projConfig, err := project.GetCurrent()
+	projConfig, err := d.projConfig.GetValue()
 	if err != nil {
-		return nil, fmt.Errorf("loading project: %w", err)
+		return nil, err
 	}
 
 	if d.flags.serviceName != "" && !projConfig.HasService(d.flags.serviceName) {

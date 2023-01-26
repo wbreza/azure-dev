@@ -18,6 +18,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/templates"
@@ -96,8 +97,6 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		})
 	})
 
-	container.RegisterSingleton(azdcontext.NewAzdContext)
-
 	container.RegisterSingleton(func(ctx context.Context, authManager *auth.Manager) (azcore.TokenCredential, error) {
 		credential, err := authManager.CredentialForCurrentUser(ctx, nil)
 		if err != nil {
@@ -142,47 +141,75 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		return flagsWithEnv
 	})
 
-	container.RegisterSingleton(
-		func(azdContext *azdcontext.AzdContext, envFlags flagsWithEnv) (*environment.Environment, error) {
-			if azdContext == nil {
-				return nil, azdcontext.ErrNoProject
-			}
+	// AzdContext
+	container.RegisterSingleton(azdcontext.NewAzdContext)
+	container.RegisterSingleton(func() *lazy.Lazy[*azdcontext.AzdContext] {
+		return lazy.NewLazy(azdcontext.NewAzdContext)
+	})
 
-			environmentName := envFlags.EnvironmentName()
-			var err error
+	// Environment
+	initEnvironment := func(azdContext *azdcontext.AzdContext, envFlags flagsWithEnv) (*environment.Environment, error) {
+		if azdContext == nil {
+			return nil, azdcontext.ErrNoProject
+		}
 
-			if environmentName == "" {
-				defaultEnvName, err := azdContext.GetDefaultEnvironmentName()
-				if err != nil {
-					return nil, err
-				}
+		environmentName := envFlags.EnvironmentName()
+		var err error
 
-				environmentName = defaultEnvName
-			}
-
-			env, err := environment.GetEnvironment(azdContext, environmentName)
+		if environmentName == "" {
+			defaultEnvName, err := azdContext.GetDefaultEnvironmentName()
 			if err != nil {
 				return nil, err
 			}
 
-			return env, nil
-		},
-	)
+			environmentName = defaultEnvName
+		}
 
-	container.RegisterSingleton(
-		func(azdContext *azdcontext.AzdContext) (*project.ProjectConfig, error) {
-			if azdContext == nil {
-				return nil, azdcontext.ErrNoProject
-			}
+		env, err := environment.GetEnvironment(azdContext, environmentName)
+		if err != nil {
+			return nil, err
+		}
 
-			projectConfig, err := project.LoadProjectConfig(azdContext.ProjectPath())
+		return env, nil
+	}
+
+	container.RegisterSingleton(initEnvironment)
+	container.RegisterSingleton(func(lazyAzdContext *lazy.Lazy[*azdcontext.AzdContext], envFlags flagsWithEnv) *lazy.Lazy[*environment.Environment] {
+		return lazy.NewLazy(func() (*environment.Environment, error) {
+			azdCtx, err := lazyAzdContext.GetValue()
 			if err != nil {
 				return nil, err
 			}
 
-			return projectConfig, nil
-		},
-	)
+			return initEnvironment(azdCtx, envFlags)
+		})
+	})
+
+	// ProjectConfig
+	initProjectConfig := func(azdContext *azdcontext.AzdContext) (*project.ProjectConfig, error) {
+		if azdContext == nil {
+			return nil, azdcontext.ErrNoProject
+		}
+
+		projectConfig, err := project.LoadProjectConfig(azdContext.ProjectPath())
+		if err != nil {
+			return nil, err
+		}
+
+		return projectConfig, nil
+	}
+
+	container.RegisterSingleton(initProjectConfig)
+	container.RegisterSingleton(func(lazyAzdContext *lazy.Lazy[*azdcontext.AzdContext]) *lazy.Lazy[*project.ProjectConfig] {
+		return lazy.NewLazy(func() (*project.ProjectConfig, error) {
+			azdCtx, err := lazyAzdContext.GetValue()
+			if err != nil {
+				return nil, err
+			}
+
+			return initProjectConfig(azdCtx)
+		})
+	})
 
 	container.RegisterSingleton(repository.NewInitializer)
 	container.RegisterSingleton(config.NewUserConfigManager)
