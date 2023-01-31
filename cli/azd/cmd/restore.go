@@ -26,7 +26,7 @@ type restoreFlags struct {
 	envFlag
 }
 
-func (r *restoreFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (r *restoreFlags) Bind(local *pflag.FlagSet) {
 	local.StringVar(
 		&r.serviceName,
 		"service",
@@ -34,13 +34,13 @@ func (r *restoreFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommand
 		//nolint:lll
 		"Restores a specific service (when the string is unspecified, all services that are listed in the "+azdcontext.ProjectFileName+" file are restored).",
 	)
+	r.envFlag.Bind(local)
 }
 
-func newRestoreFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *restoreFlags {
-	flags := &restoreFlags{}
-	flags.Bind(cmd.Flags(), global)
-	flags.envFlag.Bind(cmd.Flags(), global)
-	flags.global = global
+func newRestoreFlags(global *internal.GlobalCommandOptions) *restoreFlags {
+	flags := &restoreFlags{
+		global: global,
+	}
 
 	return flags
 }

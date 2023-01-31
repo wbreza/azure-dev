@@ -34,7 +34,7 @@ func TestPipelineConfigCmd(t *testing.T) {
 
 func TestSetupFlags(t *testing.T) {
 	command := newPipelineConfigCmd()
-	_ = newPipelineConfigFlags(command, &internal.GlobalCommandOptions{})
+	_ = newPipelineConfigFlags(&internal.GlobalCommandOptions{})
 	flagName := "principal-name"
 	principalNameFlag := command.LocalFlags().Lookup(flagName)
 	assert.NotEqual(t, (*pflag.Flag)(nil), principalNameFlag)

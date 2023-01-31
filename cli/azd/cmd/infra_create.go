@@ -27,31 +27,28 @@ type infraCreateFlags struct {
 	*envFlag
 }
 
-func (i *infraCreateFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	i.bindNonCommon(local, global)
-	i.bindCommon(local, global)
+func (i *infraCreateFlags) Bind(local *pflag.FlagSet) {
+	i.bindNonCommon(local)
+	i.bindCommon(local)
 }
 
-func (i *infraCreateFlags) bindNonCommon(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (i *infraCreateFlags) bindNonCommon(local *pflag.FlagSet) {
 	local.BoolVar(&i.noProgress, "no-progress", false, "Suppresses progress information.")
-
-	i.global = global
 }
 
-func (i *infraCreateFlags) bindCommon(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (i *infraCreateFlags) bindCommon(local *pflag.FlagSet) {
 	i.envFlag = &envFlag{}
-	i.envFlag.Bind(local, global)
+	i.envFlag.Bind(local)
 }
 
 func (i *infraCreateFlags) setCommon(envFlag *envFlag) {
 	i.envFlag = envFlag
 }
 
-func newInfraCreateFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *infraCreateFlags {
-	flags := &infraCreateFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newInfraCreateFlags(global *internal.GlobalCommandOptions) Flags {
+	return &infraCreateFlags{
+		global: global,
+	}
 }
 
 func newInfraCreateCmd(commandName string, aliases ...string) *cobra.Command {

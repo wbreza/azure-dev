@@ -65,7 +65,7 @@ const (
 	cFederatedCredentialProviderFlagName = "federated-credential-provider"
 )
 
-func (lf *loginFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (lf *loginFlags) Bind(local *pflag.FlagSet) {
 	local.BoolVar(&lf.onlyCheckStatus, "check-status", false, "Checks the log-in status instead of logging in.")
 	local.BoolVar(
 		&lf.useDeviceCode,
@@ -103,15 +103,12 @@ func (lf *loginFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandO
 		"redirect-port",
 		0,
 		"Choose the port to be used as part of the redirect URI during interactive login.")
-
-	lf.global = global
 }
 
-func newLoginFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *loginFlags {
-	flags := &loginFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newLoginFlags(global *internal.GlobalCommandOptions) *loginFlags {
+	return &loginFlags{
+		global: global,
+	}
 }
 
 func newLoginCmd() *cobra.Command {

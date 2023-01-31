@@ -12,7 +12,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
-	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
@@ -20,15 +19,13 @@ type versionFlags struct {
 	global *internal.GlobalCommandOptions
 }
 
-func (v *versionFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	v.global = global
+func (v *versionFlags) Bind(local *pflag.FlagSet) {
 }
 
-func newVersionFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *versionFlags {
-	flags := &versionFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newVersionFlags(global *internal.GlobalCommandOptions) *versionFlags {
+	return &versionFlags{
+		global: global,
+	}
 }
 
 type versionAction struct {

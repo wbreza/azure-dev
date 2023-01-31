@@ -30,11 +30,10 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func newInitFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *initFlags {
-	flags := &initFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newInitFlags(global *internal.GlobalCommandOptions) *initFlags {
+	return &initFlags{
+		global: global,
+	}
 }
 
 func newInitCmd() *cobra.Command {
@@ -61,12 +60,12 @@ type initFlags struct {
 	*envFlag
 }
 
-func (i *initFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	i.bindNonCommon(local, global)
-	i.bindCommon(local, global)
+func (i *initFlags) Bind(local *pflag.FlagSet) {
+	i.bindNonCommon(local)
+	i.bindCommon(local)
 }
 
-func (i *initFlags) bindNonCommon(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (i *initFlags) bindNonCommon(local *pflag.FlagSet) {
 	local.StringVarP(
 		&i.template.Name,
 		"template",
@@ -83,12 +82,11 @@ func (i *initFlags) bindNonCommon(local *pflag.FlagSet, global *internal.GlobalC
 		"Name or ID of an Azure subscription to use for the new environment",
 	)
 	local.StringVarP(&i.location, "location", "l", "", "Azure location for the new environment")
-	i.global = global
 }
 
-func (i *initFlags) bindCommon(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (i *initFlags) bindCommon(local *pflag.FlagSet) {
 	i.envFlag = &envFlag{}
-	i.envFlag.Bind(local, global)
+	i.envFlag.Bind(local)
 }
 
 func (i *initFlags) setCommon(envFlag *envFlag) {

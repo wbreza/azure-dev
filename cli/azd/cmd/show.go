@@ -27,16 +27,14 @@ type showFlags struct {
 	envFlag
 }
 
-func (s *showFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	s.envFlag.Bind(local, global)
-	s.global = global
+func (s *showFlags) Bind(local *pflag.FlagSet) {
+	s.envFlag.Bind(local)
 }
 
-func newShowFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *showFlags {
-	flags := &showFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newShowFlags(global *internal.GlobalCommandOptions) *showFlags {
+	return &showFlags{
+		global: global,
+	}
 }
 
 func newShowCmd() *cobra.Command {

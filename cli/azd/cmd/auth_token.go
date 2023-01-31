@@ -26,11 +26,10 @@ type authTokenFlags struct {
 	global   *internal.GlobalCommandOptions
 }
 
-func newAuthTokenFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *authTokenFlags {
-	flags := &authTokenFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newAuthTokenFlags(global *internal.GlobalCommandOptions) *authTokenFlags {
+	return &authTokenFlags{
+		global: global,
+	}
 }
 
 func newAuthTokenCmd() *cobra.Command {
@@ -40,8 +39,7 @@ func newAuthTokenCmd() *cobra.Command {
 	}
 }
 
-func (f *authTokenFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	f.global = global
+func (f *authTokenFlags) Bind(local *pflag.FlagSet) {
 	local.StringArrayVar(&f.scopes, "scope", nil, "The scope to use when requesting an access token")
 	local.StringVar(&f.tenantID, "tenant-id", "", "The tenant id to use when requesting an access token.")
 }

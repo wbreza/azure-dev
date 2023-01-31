@@ -26,7 +26,7 @@ type pipelineConfigFlags struct {
 	envFlag
 }
 
-func (pc *pipelineConfigFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (pc *pipelineConfigFlags) Bind(local *pflag.FlagSet) {
 	local.StringVar(
 		&pc.PipelineServicePrincipalName,
 		"principal-name",
@@ -48,8 +48,7 @@ func (pc *pipelineConfigFlags) Bind(local *pflag.FlagSet, global *internal.Globa
 	local.StringVar(&pc.PipelineRoleName, "principal-role", "contributor", "The role to assign to the service principal.")
 	local.StringVar(&pc.PipelineProvider, "provider", "github",
 		"The pipeline provider to use (github for Github Actions and azdo for Azure Pipelines).")
-	pc.envFlag.Bind(local, global)
-	pc.global = global
+	pc.envFlag.Bind(local)
 }
 
 func pipelineActions(root *actions.ActionDescriptor) *actions.ActionDescriptor {
@@ -77,11 +76,10 @@ For more information, go to https://aka.ms/azure-dev/pipeline.`,
 	return group
 }
 
-func newPipelineConfigFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *pipelineConfigFlags {
-	flags := &pipelineConfigFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newPipelineConfigFlags(global *internal.GlobalCommandOptions) *pipelineConfigFlags {
+	return &pipelineConfigFlags{
+		global: global,
+	}
 }
 
 func newPipelineConfigCmd() *cobra.Command {

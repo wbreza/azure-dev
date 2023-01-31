@@ -118,7 +118,7 @@ type ActionDescriptorOptions struct {
 	// Cobra command configuration
 	*cobra.Command
 	// Function to resolve / create the flags instance required for the action
-	FlagsResolver any
+	FlagsResolver FlagsResolver
 	// Function to resolve / create the action instance
 	ActionResolver any
 	// Array of support output formats

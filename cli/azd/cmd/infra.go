@@ -20,7 +20,7 @@ func infraActions(root *actions.ActionDescriptor) *actions.ActionDescriptor {
 	group.
 		Add("create", &actions.ActionDescriptorOptions{
 			Command:        newInfraCreateCmd("create", "provision"),
-			FlagsResolver:  newInfraCreateFlags,
+			FlagsResolver:  actions.NewFlagsResolver[*infraCreateFlags](newInfraCreateFlags),
 			ActionResolver: newInfraCreateAction,
 			OutputFormats:  []output.Format{output.JsonFormat, output.NoneFormat},
 			DefaultFormat:  output.NoneFormat,
@@ -30,7 +30,7 @@ func infraActions(root *actions.ActionDescriptor) *actions.ActionDescriptor {
 	group.
 		Add("delete", &actions.ActionDescriptorOptions{
 			Command:        newInfraDeleteCmd("delete", "down"),
-			FlagsResolver:  newInfraDeleteFlags,
+			FlagsResolver:  actions.NewFlagsResolver[*infraDeleteFlags](newInfraDeleteFlags),
 			ActionResolver: newInfraDeleteAction,
 			OutputFormats:  []output.Format{output.JsonFormat, output.NoneFormat},
 			DefaultFormat:  output.NoneFormat,

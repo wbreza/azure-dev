@@ -23,23 +23,21 @@ type upFlags struct {
 	envFlag
 }
 
-func (u *upFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	u.envFlag.Bind(local, global)
-	u.global = global
+func (u *upFlags) Bind(local *pflag.FlagSet) {
+	u.envFlag.Bind(local)
 
-	u.initFlags.bindNonCommon(local, global)
+	u.initFlags.bindNonCommon(local)
 	u.initFlags.setCommon(&u.envFlag)
-	u.infraCreateFlags.bindNonCommon(local, global)
+	u.infraCreateFlags.bindNonCommon(local)
 	u.infraCreateFlags.setCommon(&u.envFlag)
-	u.deployFlags.bindNonCommon(local, global)
+	u.deployFlags.bindNonCommon(local)
 	u.deployFlags.setCommon(&u.envFlag)
 }
 
-func newUpFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *upFlags {
-	flags := &upFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newUpFlags(global *internal.GlobalCommandOptions) *upFlags {
+	return &upFlags{
+		global: global,
+	}
 }
 
 func newUpCmd() *cobra.Command {

@@ -81,11 +81,10 @@ You can find all environment configurations under the ` + output.WithBackticks(`
 	return group
 }
 
-func newEnvSetFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *envSetFlags {
-	flags := &envSetFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newEnvSetFlags(global *internal.GlobalCommandOptions) *envSetFlags {
+	return &envSetFlags{
+		global: global,
+	}
 }
 
 func newEnvSetCmd() *cobra.Command {
@@ -101,9 +100,8 @@ type envSetFlags struct {
 	global *internal.GlobalCommandOptions
 }
 
-func (f *envSetFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	f.envFlag.Bind(local, global)
-	f.global = global
+func (f *envSetFlags) Bind(local *pflag.FlagSet) {
+	f.envFlag.Bind(local)
 }
 
 type envSetAction struct {
@@ -239,7 +237,7 @@ type envNewFlags struct {
 	global       *internal.GlobalCommandOptions
 }
 
-func (f *envNewFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (f *envNewFlags) Bind(local *pflag.FlagSet) {
 	local.StringVar(
 		&f.subscription,
 		"subscription",
@@ -247,15 +245,12 @@ func (f *envNewFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandO
 		"Name or ID of an Azure subscription to use for the new environment",
 	)
 	local.StringVarP(&f.location, "location", "l", "", "Azure location for the new environment")
-
-	f.global = global
 }
 
-func newEnvNewFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *envNewFlags {
-	flags := &envNewFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newEnvNewFlags(global *internal.GlobalCommandOptions) *envNewFlags {
+	return &envNewFlags{
+		global: global,
+	}
 }
 
 func newEnvNewCmd() *cobra.Command {
@@ -319,16 +314,14 @@ type envRefreshFlags struct {
 	envFlag
 }
 
-func (er *envRefreshFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	er.envFlag.Bind(local, global)
-	er.global = global
+func (er *envRefreshFlags) Bind(local *pflag.FlagSet) {
+	er.envFlag.Bind(local)
 }
 
-func newEnvRefreshFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *envRefreshFlags {
-	flags := &envRefreshFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newEnvRefreshFlags(global *internal.GlobalCommandOptions) *envRefreshFlags {
+	return &envRefreshFlags{
+		global: global,
+	}
 }
 
 func newEnvRefreshCmd() *cobra.Command {
@@ -427,11 +420,10 @@ func (ef *envRefreshAction) Run(ctx context.Context) (*actions.ActionResult, err
 	return nil, nil
 }
 
-func newEnvGetValuesFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *envGetValuesFlags {
-	flags := &envGetValuesFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newEnvGetValuesFlags(global *internal.GlobalCommandOptions) *envGetValuesFlags {
+	return &envGetValuesFlags{
+		global: global,
+	}
 }
 
 func newEnvGetValuesCmd() *cobra.Command {
@@ -446,9 +438,8 @@ type envGetValuesFlags struct {
 	global *internal.GlobalCommandOptions
 }
 
-func (eg *envGetValuesFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	eg.envFlag.Bind(local, global)
-	eg.global = global
+func (eg *envGetValuesFlags) Bind(local *pflag.FlagSet) {
+	eg.envFlag.Bind(local)
 }
 
 type envGetValuesAction struct {

@@ -30,14 +30,12 @@ type deployFlags struct {
 	*envFlag
 }
 
-func (d *deployFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
-	d.bindNonCommon(local, global)
-	d.bindCommon(local, global)
+func (d *deployFlags) Bind(local *pflag.FlagSet) {
+	d.bindNonCommon(local)
+	d.bindCommon(local)
 }
 
-func (d *deployFlags) bindNonCommon(
-	local *pflag.FlagSet,
-	global *internal.GlobalCommandOptions) {
+func (d *deployFlags) bindNonCommon(local *pflag.FlagSet) {
 	local.StringVar(
 		&d.serviceName,
 		"service",
@@ -45,23 +43,21 @@ func (d *deployFlags) bindNonCommon(
 		//nolint:lll
 		"Deploys a specific service (when the string is unspecified, all services that are listed in the "+azdcontext.ProjectFileName+" file are deployed).",
 	)
-	d.global = global
 }
 
-func (d *deployFlags) bindCommon(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (d *deployFlags) bindCommon(local *pflag.FlagSet) {
 	d.envFlag = &envFlag{}
-	d.envFlag.Bind(local, global)
+	d.envFlag.Bind(local)
 }
 
 func (d *deployFlags) setCommon(envFlag *envFlag) {
 	d.envFlag = envFlag
 }
 
-func newDeployFlags(cmd *cobra.Command, global *internal.GlobalCommandOptions) *deployFlags {
-	flags := &deployFlags{}
-	flags.Bind(cmd.Flags(), global)
-
-	return flags
+func newDeployFlags(global *internal.GlobalCommandOptions) *deployFlags {
+	return &deployFlags{
+		global: global,
+	}
 }
 
 func newDeployCmd() *cobra.Command {

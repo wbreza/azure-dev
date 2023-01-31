@@ -224,11 +224,8 @@ type testFlags struct {
 	ran bool
 }
 
-func newTestFlags(cmd *cobra.Command) *testFlags {
-	flags := &testFlags{}
-	flags.Bind(cmd)
-
-	return flags
+func newTestFlags() *testFlags {
+	return &testFlags{}
 }
 
 func (a *testFlags) Bind(cmd *cobra.Command) {

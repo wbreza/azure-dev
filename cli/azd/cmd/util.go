@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
-	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/internal/telemetry"
 	"github.com/azure/azure-dev/cli/azd/internal/telemetry/fields"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
@@ -331,7 +330,7 @@ type envFlag struct {
 	environmentName string
 }
 
-func (e *envFlag) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions) {
+func (e *envFlag) Bind(local *pflag.FlagSet) {
 	local.StringVarP(
 		&e.environmentName,
 		"environment",
@@ -369,7 +368,7 @@ type flagsWithEnv interface {
 	EnvironmentName() string
 }
 
-// Represents and command flags
-type flags interface {
-	Bind(local *pflag.FlagSet, global *internal.GlobalCommandOptions)
+// Represents and command Flags
+type Flags interface {
+	Bind(local *pflag.FlagSet)
 }

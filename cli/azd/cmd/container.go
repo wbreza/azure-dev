@@ -129,7 +129,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 
 	container.RegisterSingleton(func() flagsWithEnv {
 		// Get the current cmd flags for the executing command
-		var currentFlags flags
+		var currentFlags Flags
 		err := container.Resolve(&currentFlags)
 		if err != nil {
 			return &envFlag{}
