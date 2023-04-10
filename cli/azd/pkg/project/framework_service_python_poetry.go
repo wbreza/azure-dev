@@ -58,6 +58,13 @@ func (pp *poetryProject) Restore(
 ) *async.TaskWithProgress[*ServiceRestoreResult, ServiceProgress] {
 	return async.RunTaskWithProgress(
 		func(task *async.TaskContextWithProgress[*ServiceRestoreResult, ServiceProgress]) {
+			task.SetProgress(NewServiceProgress("Installing Poetry dependencies"))
+			if err := pp.poetryCli.Install(ctx, serviceConfig.Path()); err != nil {
+				task.SetError(err)
+				return
+			}
+
+			task.SetResult(&ServiceRestoreResult{})
 		},
 	)
 }
@@ -70,7 +77,16 @@ func (pp *poetryProject) Build(
 ) *async.TaskWithProgress[*ServiceBuildResult, ServiceProgress] {
 	return async.RunTaskWithProgress(
 		func(task *async.TaskContextWithProgress[*ServiceBuildResult, ServiceProgress]) {
+			task.SetProgress(NewServiceProgress("Building Poetry project"))
+			if err := pp.poetryCli.Build(ctx, serviceConfig.Path()); err != nil {
+				task.SetError(err)
+				return
+			}
 
+			task.SetResult(&ServiceBuildResult{
+				Restore:         restoreOutput,
+				BuildOutputPath: filepath.Join(serviceConfig.Path(), "dist"),
+			})
 		},
 	)
 }

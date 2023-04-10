@@ -34,6 +34,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/kubectl"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/maven"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/npm"
+	"github.com/azure/azure-dev/cli/azd/pkg/tools/poetry"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/python"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/swa"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/terraform"
@@ -296,6 +297,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterSingleton(python.NewPythonCli)
 	container.RegisterSingleton(swa.NewSwaCli)
 	container.RegisterSingleton(terraform.NewTerraformCli)
+	container.RegisterSingleton(poetry.NewPoetryCli)
 
 	// Other
 	container.RegisterSingleton(clock.New)
@@ -323,6 +325,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		project.ServiceLanguageCsharp:     project.NewDotNetProject,
 		project.ServiceLanguageFsharp:     project.NewDotNetProject,
 		project.ServiceLanguagePython:     project.NewPythonProject,
+		project.ServiceLanguagePoetry:     project.NewPoetryProject,
 		project.ServiceLanguageJavaScript: project.NewNpmProject,
 		project.ServiceLanguageTypeScript: project.NewNpmProject,
 		project.ServiceLanguageJava:       project.NewMavenProject,

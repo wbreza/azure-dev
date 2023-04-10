@@ -21,6 +21,7 @@ const (
 	ServiceLanguageJavaScript ServiceLanguageKind = "js"
 	ServiceLanguageTypeScript ServiceLanguageKind = "ts"
 	ServiceLanguagePython     ServiceLanguageKind = "python"
+	ServiceLanguagePoetry     ServiceLanguageKind = "poetry"
 	ServiceLanguageJava       ServiceLanguageKind = "java"
 	ServiceLanguageDocker     ServiceLanguageKind = "docker"
 )
@@ -37,6 +38,7 @@ func parseServiceLanguage(kind ServiceLanguageKind) (ServiceLanguageKind, error)
 		ServiceLanguageFsharp,
 		ServiceLanguageJavaScript,
 		ServiceLanguageTypeScript,
+		ServiceLanguagePoetry,
 		ServiceLanguagePython,
 		ServiceLanguageJava:
 		// Excluding ServiceLanguageDocker since it is implicitly derived currently, and not an actual language
