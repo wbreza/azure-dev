@@ -136,7 +136,7 @@ func (h *HooksRunner) execHook(ctx context.Context, hookConfig *HookConfig) erro
 	scriptInteractive := consoleInteractive && hookConfig.Interactive
 
 	operationMessage := fmt.Sprintf("Running %s hook", hookConfig.Name)
-	return h.operationManager.Run(ctx, operationMessage, func(operation *operations.Operation) error {
+	return h.operationManager.Run(ctx, operationMessage, func(operation operations.Operation) error {
 		log.Printf("Executing script '%s'\n", hookConfig.path)
 		res, err := script.Execute(ctx, hookConfig.path, scriptInteractive)
 		if err != nil {

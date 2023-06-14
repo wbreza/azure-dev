@@ -7,30 +7,32 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/messaging"
 )
 
-type messageManager struct {
-	publisher messaging.Publisher
+type operationPublisher struct {
+	publisher  messaging.Publisher
+	subscriber *operationSubscriber
 }
 
-func NewMessageManager(publisher messaging.Publisher) Manager {
-	return &messageManager{
-		publisher: publisher,
+func NewPublisher(publisher messaging.Publisher, operationSubscriber *operationSubscriber) Manager {
+	return &operationPublisher{
+		publisher:  publisher,
+		subscriber: operationSubscriber,
 	}
 }
 
-func (om *messageManager) Send(ctx context.Context, message *Message) error {
+func (om *operationPublisher) Send(ctx context.Context, message *Message) error {
 	envelope := messaging.NewEnvelope(defaultMessageKind, message)
 	return om.publisher.Send(ctx, envelope)
 }
 
-func (om *messageManager) ReportProgress(ctx context.Context, progressMessage string) {
+func (om *operationPublisher) ReportProgress(ctx context.Context, progressMessage string) {
 	envelope, _ := NewMessage(progressMessage, StateProgress)
 	if err := om.publisher.Send(ctx, envelope); err != nil {
 		log.Printf("failed sending progress message: %s", err.Error())
 	}
 }
 
-func (om *messageManager) Run(ctx context.Context, operationMessage string, operationFunc OperationRunFunc) error {
-	operation := newOperation(om)
+func (om *operationPublisher) Run(ctx context.Context, operationMessage string, operationFunc OperationRunFunc) error {
+	operation := newMessageOperation(om)
 
 	envelope, _ := NewCorrelatedMessage(operation.correlationId, operationMessage, StateRunning)
 	if err := om.publisher.Send(ctx, envelope); err != nil {

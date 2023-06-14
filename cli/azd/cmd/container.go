@@ -324,8 +324,9 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	})
 
 	// Operations
-	container.RegisterSingleton(operations.NewMessageManager)
-	container.RegisterSingleton(operations.NewMessagePrinter)
+	container.RegisterSingleton(operations.NewSubscriber)
+	container.RegisterSingleton(operations.NewPublisher)
+	container.RegisterSingleton(operations.NewPrinter)
 
 	// Provisioning
 	container.RegisterTransient(provisioning.NewManager)

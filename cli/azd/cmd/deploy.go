@@ -226,7 +226,7 @@ func (da *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 	for _, svc := range da.projectConfig.GetServicesStable() {
 		var deployResult *project.ServiceDeployResult
 		operationMessage := fmt.Sprintf("Deploying service %s", svc.Name)
-		err = da.operationManager.Run(ctx, operationMessage, func(operation *operations.Operation) error {
+		err = da.operationManager.Run(ctx, operationMessage, func(operation operations.Operation) error {
 			// Skip this service if both cases are true:
 			// 1. The user specified a service name
 			// 2. This service is not the one the user specified
@@ -303,9 +303,9 @@ func (da *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 		}
 	}
 
-	if err := da.operationPrinter.Flush(ctx); err != nil {
-		return nil, err
-	}
+	// if err := da.operationPrinter.Flush(ctx); err != nil {
+	// 	return nil, err
+	// }
 
 	return &actions.ActionResult{
 		Message: &actions.ResultMessage{

@@ -27,10 +27,10 @@ func (m *UxMiddleware) Run(ctx context.Context, next NextFn) (*actions.ActionRes
 		return next(ctx)
 	}
 
-	if err := m.operationPrinter.Start(ctx); err != nil {
-		return nil, err
-	}
-	defer m.operationPrinter.Stop(ctx)
+	// if err := m.operationPrinter.Start(ctx); err != nil {
+	// 	return nil, err
+	// }
+	// defer m.operationPrinter.Stop(ctx)
 
 	return next(ctx)
 }
