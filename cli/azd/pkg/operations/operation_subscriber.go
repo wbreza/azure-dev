@@ -32,8 +32,12 @@ func (p *operationSubscriber) Start(ctx context.Context) error {
 		return fmt.Errorf("printer already started")
 	}
 
+	p.printer.AddHandler(PrinterFlushEvent, func(ctx context.Context, args PrinterEventArgs) error {
+		return p.Flush(ctx)
+	})
+
 	filter := func(ctx context.Context, message *messaging.Envelope) bool {
-		return message.Type == defaultMessageKind
+		return message.Type == DefaultMessageKind
 	}
 
 	subscription, err := p.subscriber.Subscribe(ctx, filter, p.receiveMessage)

@@ -7,7 +7,7 @@ import (
 
 type StateKind string
 
-const defaultMessageKind messaging.MessageKind = "operation"
+const DefaultMessageKind messaging.MessageKind = "operation"
 
 var (
 	StateRunning  StateKind = "running"
@@ -31,7 +31,7 @@ func NewMessage(message string, state StateKind) (*messaging.Envelope, *Message)
 		State:         state,
 	}
 
-	return messaging.NewEnvelope(defaultMessageKind, msg), msg
+	return messaging.NewEnvelope(DefaultMessageKind, msg), msg
 }
 
 func NewCorrelatedMessage(id uuid.UUID, message string, state StateKind) (*messaging.Envelope, *Message) {
@@ -41,5 +41,5 @@ func NewCorrelatedMessage(id uuid.UUID, message string, state StateKind) (*messa
 		State:         state,
 	}
 
-	return messaging.NewEnvelope(defaultMessageKind, msg), msg
+	return messaging.NewEnvelope(DefaultMessageKind, msg), msg
 }

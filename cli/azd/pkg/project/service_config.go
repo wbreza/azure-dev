@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/ext"
+	"github.com/azure/azure-dev/cli/azd/pkg/hooks"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 )
 
@@ -31,7 +32,7 @@ type ServiceConfig struct {
 	// The infrastructure provisioning configuration
 	Infra provisioning.Options `yaml:"infra"`
 	// Hook configuration for service
-	Hooks map[string]*ext.HookConfig `yaml:"hooks,omitempty"`
+	Hooks map[string]*hooks.HookConfig `yaml:"hooks,omitempty"`
 
 	*ext.EventDispatcher[ServiceLifecycleEventArgs] `yaml:",omitempty"`
 

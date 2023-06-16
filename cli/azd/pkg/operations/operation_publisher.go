@@ -8,19 +8,17 @@ import (
 )
 
 type operationPublisher struct {
-	publisher  messaging.Publisher
-	subscriber *operationSubscriber
+	publisher messaging.Publisher
 }
 
-func NewPublisher(publisher messaging.Publisher, operationSubscriber *operationSubscriber) Manager {
+func NewPublisher(publisher messaging.Publisher) Manager {
 	return &operationPublisher{
-		publisher:  publisher,
-		subscriber: operationSubscriber,
+		publisher: publisher,
 	}
 }
 
 func (om *operationPublisher) Send(ctx context.Context, message *Message) error {
-	envelope := messaging.NewEnvelope(defaultMessageKind, message)
+	envelope := messaging.NewEnvelope(DefaultMessageKind, message)
 	return om.publisher.Send(ctx, envelope)
 }
 

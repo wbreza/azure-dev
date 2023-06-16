@@ -9,6 +9,7 @@ import (
 
 type Event string
 
+type ActionFn func() error
 type EventHandlerFn[T any] func(ctx context.Context, args T) error
 
 var (
@@ -98,7 +99,7 @@ func (ed *EventDispatcher[T]) RaiseEvent(ctx context.Context, name Event, eventA
 }
 
 // Invokes an action and raises an event before and after the action
-func (ed *EventDispatcher[T]) Invoke(ctx context.Context, name Event, eventArgs T, action InvokeFn) error {
+func (ed *EventDispatcher[T]) Invoke(ctx context.Context, name Event, eventArgs T, action ActionFn) error {
 	if err := ed.validateEvent(name); err != nil {
 		return err
 	}

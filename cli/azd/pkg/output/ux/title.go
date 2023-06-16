@@ -17,11 +17,11 @@ type MessageTitle struct {
 
 func (t *MessageTitle) ToString(currentIndentation string) string {
 	if t.TitleNote != "" {
-		return fmt.Sprintf("\n%s\n%s\n",
+		return fmt.Sprintf("\n%s\n%s\n\n",
 			output.WithBold(t.Title),
 			output.WithGrayFormat(t.TitleNote))
 	}
-	return fmt.Sprintf("\n%s\n", output.WithBold(t.Title))
+	return fmt.Sprintf("\n%s\n\n", output.WithBold(t.Title))
 }
 
 func (t *MessageTitle) MarshalJSON() ([]byte, error) {

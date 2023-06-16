@@ -31,6 +31,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/pipeline"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
+	"github.com/azure/azure-dev/cli/azd/pkg/tasks"
 	"github.com/azure/azure-dev/cli/azd/pkg/templates"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/azcli"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/bicep"
@@ -324,9 +325,13 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	})
 
 	// Operations
-	container.RegisterSingleton(operations.NewSubscriber)
+	//container.RegisterSingleton(operations.NewSubscriber)
 	container.RegisterSingleton(operations.NewPublisher)
-	container.RegisterSingleton(operations.NewPrinter)
+	//container.RegisterSingleton(operations.NewPrinter)
+
+	// Tasks
+	container.RegisterSingleton(tasks.NewRunner)
+	container.RegisterTransient(tasks.NewLongRunningTask)
 
 	// Provisioning
 	container.RegisterTransient(provisioning.NewManager)

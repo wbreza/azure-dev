@@ -4,20 +4,17 @@ import (
 	"context"
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
-	"github.com/azure/azure-dev/cli/azd/pkg/operations"
 )
 
 // UxMiddleware is a middleware that handles the UX of the CLI
 type UxMiddleware struct {
-	options          *Options
-	operationPrinter operations.Printer
+	options *Options
 }
 
 // Creates a new instance of the UX middleware
-func NewUxMiddleware(options *Options, operationPrinter operations.Printer) Middleware {
+func NewUxMiddleware(options *Options) Middleware {
 	return &UxMiddleware{
-		options:          options,
-		operationPrinter: operationPrinter,
+		options: options,
 	}
 }
 

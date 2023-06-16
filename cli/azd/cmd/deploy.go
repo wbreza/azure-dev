@@ -19,10 +19,10 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
-	"github.com/azure/azure-dev/cli/azd/pkg/operations"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
+	"github.com/azure/azure-dev/cli/azd/pkg/tasks"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/azcli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -113,8 +113,7 @@ type deployAction struct {
 	middlewareRunner         middleware.MiddlewareContext
 	packageActionInitializer actions.ActionInitializer[*packageAction]
 	alphaFeatureManager      *alpha.FeatureManager
-	operationManager         operations.Manager
-	operationPrinter         operations.Printer
+	taskRunner               *tasks.Runner
 }
 
 func newDeployAction(
@@ -135,8 +134,7 @@ func newDeployAction(
 	middlewareRunner middleware.MiddlewareContext,
 	packageActionInitializer actions.ActionInitializer[*packageAction],
 	alphaFeatureManager *alpha.FeatureManager,
-	operationManager operations.Manager,
-	operationPrinter operations.Printer,
+	taskRunner *tasks.Runner,
 ) actions.Action {
 	return &deployAction{
 		flags:                    flags,
@@ -156,8 +154,7 @@ func newDeployAction(
 		middlewareRunner:         middlewareRunner,
 		packageActionInitializer: packageActionInitializer,
 		alphaFeatureManager:      alphaFeatureManager,
-		operationManager:         operationManager,
-		operationPrinter:         operationPrinter,
+		taskRunner:               taskRunner,
 	}
 }
 
@@ -224,18 +221,18 @@ func (da *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 	deployResults := map[string]*project.ServiceDeployResult{}
 
 	for _, svc := range da.projectConfig.GetServicesStable() {
-		var deployResult *project.ServiceDeployResult
-		operationMessage := fmt.Sprintf("Deploying service %s", svc.Name)
-		err = da.operationManager.Run(ctx, operationMessage, func(operation operations.Operation) error {
+		svcLocal := svc
+		operationMessage := fmt.Sprintf("Deploying service %s", svcLocal.Name)
+		da.taskRunner.AddLongRunningTask(operationMessage, func(ctx context.Context, task tasks.Task) (ux.UxItem, error) {
 			// Skip this service if both cases are true:
 			// 1. The user specified a service name
 			// 2. This service is not the one the user specified
-			if targetServiceName != "" && targetServiceName != svc.Name {
-				operation.Skip(ctx)
-				return nil
+			if targetServiceName != "" && targetServiceName != svcLocal.Name {
+				task.Skip(ctx, "")
+				return nil, nil
 			}
 
-			if alphaFeatureId, isAlphaFeature := alpha.IsFeatureKey(string(svc.Host)); isAlphaFeature {
+			if alphaFeatureId, isAlphaFeature := alpha.IsFeatureKey(string(svcLocal.Host)); isAlphaFeature {
 				// alpha feature on/off detection for host is done during initialization.
 				// This is just for displaying the warning during deployment.
 				da.console.WarnForFeature(ctx, alphaFeatureId)
@@ -249,47 +246,41 @@ func (da *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 				}
 			} else {
 				//  --from-package not set, package the application
-				packageTask := da.serviceManager.Package(ctx, svc, nil)
+				packageTask := da.serviceManager.Package(ctx, svcLocal, nil)
 				// TODO: After async refactor this progress reporting go away
 				go func() {
 					for packageProgress := range packageTask.Progress() {
-						operation.Progress(ctx, packageProgress.Message)
+						task.Progress(ctx, packageProgress.Message)
 					}
 				}()
 
 				packageResult, err = packageTask.Await()
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 
-			deployTask := da.serviceManager.Deploy(ctx, svc, packageResult)
+			deployTask := da.serviceManager.Deploy(ctx, svcLocal, packageResult)
 			// TODO: After async refactor this progress reporting go away
 			go func() {
 				for packageProgress := range deployTask.Progress() {
-					operation.Progress(ctx, packageProgress.Message)
+					task.Progress(ctx, packageProgress.Message)
 				}
 			}()
 
-			operationResult, err := deployTask.Await()
+			deployResult, err := deployTask.Await()
 			if err != nil {
-				return err
+				return nil, err
 			}
 
-			deployResult = operationResult
-			return nil
+			deployResults[svcLocal.Name] = deployResult
+
+			return deployResult, nil
 		})
+	}
 
-		if err != nil {
-			return nil, err
-		}
-
-		if deployResult != nil {
-			deployResults[svc.Name] = deployResult
-
-			// report deploy outputs
-			da.console.MessageUxItem(ctx, deployResult)
-		}
+	if err := da.taskRunner.Start(ctx); err != nil {
+		return nil, err
 	}
 
 	if da.formatter.Kind() == output.JsonFormat {
@@ -302,10 +293,6 @@ func (da *deployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 			return nil, fmt.Errorf("deploy result could not be displayed: %w", fmtErr)
 		}
 	}
-
-	// if err := da.operationPrinter.Flush(ctx); err != nil {
-	// 	return nil, err
-	// }
 
 	return &actions.ActionResult{
 		Message: &actions.ResultMessage{

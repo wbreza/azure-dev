@@ -5,19 +5,38 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 )
 
+type PrinterEventArgs struct {
+}
+
+var (
+	PrinterInitializeEvent ext.Event = "initialize"
+	PrinterFlushEvent      ext.Event = "flush"
+)
+
 type printer struct {
-	console        input.Console
-	currentMessage string
-	lock           sync.Mutex
+	*ext.EventDispatcher[PrinterEventArgs] `yaml:",omitempty"`
+	console                                input.Console
+	currentMessage                         string
+	lock                                   sync.Mutex
 }
 
 func NewPrinter(console input.Console) Printer {
 	return &printer{
-		console: console,
+		console:         console,
+		EventDispatcher: ext.NewEventDispatcher[PrinterEventArgs](PrinterInitializeEvent, PrinterFlushEvent),
 	}
+}
+
+func (p *printer) Initialize(ctx context.Context) error {
+	return p.RaiseEvent(ctx, PrinterInitializeEvent, PrinterEventArgs{})
+}
+
+func (p *printer) Flush(ctx context.Context) error {
+	return p.RaiseEvent(ctx, PrinterFlushEvent, PrinterEventArgs{})
 }
 
 func (p *printer) ShowRunning(ctx context.Context, message string) {

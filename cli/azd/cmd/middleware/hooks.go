@@ -10,6 +10,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/ext"
+	"github.com/azure/azure-dev/cli/azd/pkg/hooks"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/operations"
@@ -87,8 +88,8 @@ func (m *HooksMiddleware) registerCommandHooks(
 		return next(ctx)
 	}
 
-	hooksManager := ext.NewHooksManager(projectConfig.Path)
-	hooksRunner := ext.NewHooksRunner(
+	hooksManager := hooks.NewHooksManager(projectConfig.Path)
+	hooksRunner := hooks.NewHooksRunner(
 		hooksManager,
 		m.commandRunner,
 		m.operationManager,
@@ -140,8 +141,8 @@ func (m *HooksMiddleware) registerServiceHooks(
 			continue
 		}
 
-		serviceHooksManager := ext.NewHooksManager(service.Path())
-		serviceHooksRunner := ext.NewHooksRunner(
+		serviceHooksManager := hooks.NewHooksManager(service.Path())
+		serviceHooksRunner := hooks.NewHooksRunner(
 			serviceHooksManager,
 			m.commandRunner,
 			m.operationManager,
@@ -185,23 +186,23 @@ func (m *HooksMiddleware) registerServiceHooks(
 // Creates an event handler for the specified service config and event name
 func (m *HooksMiddleware) createServiceEventHandler(
 	ctx context.Context,
-	hookType ext.HookType,
+	hookType hooks.HookType,
 	hookName string,
-	hooksRunner *ext.HooksRunner,
+	hooksRunner *hooks.HooksRunner,
 ) ext.EventHandlerFn[project.ServiceLifecycleEventArgs] {
 	return func(ctx context.Context, eventArgs project.ServiceLifecycleEventArgs) error {
 		return hooksRunner.RunHooks(ctx, hookType, hookName)
 	}
 }
 
-func inferHookType(name string, config *ext.HookConfig) (ext.HookType, string, error) {
+func inferHookType(name string, config *hooks.HookConfig) (hooks.HookType, string, error) {
 	// Validate name length so go doesn't PANIC for string slicing below
 	if len(name) < 4 {
 		return "", "", fmt.Errorf("unable to infer hook '%s'", name)
 	} else if name[:3] == "pre" {
-		return ext.HookTypePre, name[3:], nil
+		return hooks.HookTypePre, name[3:], nil
 	} else if name[:4] == "post" {
-		return ext.HookTypePost, name[4:], nil
+		return hooks.HookTypePost, name[4:], nil
 	}
 
 	return "", "", fmt.Errorf("unable to infer hook '%s'", name)

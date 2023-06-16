@@ -2,6 +2,8 @@ package operations
 
 import (
 	"context"
+
+	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 )
 
 // Operation represent an atomic long running operation
@@ -35,6 +37,8 @@ type Manager interface {
 
 // Printers orchestrates rendering operation updates in the UX CLI
 type Printer interface {
+	AddHandler(name ext.Event, handler ext.EventHandlerFn[PrinterEventArgs]) error
+	RemoveHandler(name ext.Event, handler ext.EventHandlerFn[PrinterEventArgs]) error
 	ShowRunning(ctx context.Context, message string)
 	ShowProgress(ctx context.Context, message string)
 	ShowError(ctx context.Context, message string)

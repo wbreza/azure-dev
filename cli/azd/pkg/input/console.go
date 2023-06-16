@@ -185,10 +185,10 @@ func (c *AskerConsole) MessageUxItem(ctx context.Context, item ux.UxItem) {
 	if c.spinner != nil && c.spinner.Status() == yacspin.SpinnerRunning {
 		c.StopSpinner(ctx, "", Step)
 		// default non-format
-		fmt.Fprintln(c.writer, item.ToString(c.currentIndent))
+		fmt.Fprint(c.writer, item.ToString(c.currentIndent))
 		_ = c.spinner.Start()
 	} else {
-		fmt.Fprintln(c.writer, item.ToString(c.currentIndent))
+		fmt.Fprint(c.writer, item.ToString(c.currentIndent))
 	}
 }
 
