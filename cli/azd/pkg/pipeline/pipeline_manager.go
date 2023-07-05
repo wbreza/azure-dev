@@ -45,6 +45,7 @@ type PipelineManagerArgs struct {
 	PipelineRoleNames            []string
 	PipelineProvider             string
 	PipelineAuthTypeName         string
+	PipelineEnvironmentName      string
 }
 
 type PipelineConfigResult struct {
@@ -162,19 +163,28 @@ func (pm *PipelineManager) Configure(ctx context.Context) (result *PipelineConfi
 		"Configuring repository %s to use credentials for %s", repoSlug, pm.args.PipelineServicePrincipalName)
 	pm.console.ShowSpinner(ctx, displayMsg, input.Step)
 
+	// Use the `--ci-environment` flag when specified
+	// Otherwise fallback to azd environment name
+	ciEnvironmentName := pm.args.PipelineEnvironmentName
+	if ciEnvironmentName == "" {
+		ciEnvironmentName = pm.env.GetEnvName()
+	}
+
 	err = pm.ciProvider.configureConnection(
 		ctx,
 		gitRepoInfo,
 		prj.Infra,
 		credentials,
-		PipelineAuthType(pm.args.PipelineAuthTypeName))
+		PipelineAuthType(pm.args.PipelineAuthTypeName),
+		ciEnvironmentName,
+	)
 	pm.console.StopSpinner(ctx, "", input.GetStepResultFormat(err))
 	if err != nil {
 		return result, err
 	}
 
 	// config pipeline handles setting or creating the provider pipeline to be used
-	ciPipeline, err := pm.ciProvider.configurePipeline(ctx, gitRepoInfo, prj.Infra)
+	ciPipeline, err := pm.ciProvider.configurePipeline(ctx, gitRepoInfo, prj.Infra, ciEnvironmentName)
 	if err != nil {
 		return result, err
 	}

@@ -56,8 +56,18 @@ func (pc *pipelineConfigFlags) Bind(local *pflag.FlagSet, global *internal.Globa
 	)
 	// default provider is empty because it can be set from azure.yaml. By letting default here be empty, we know that
 	// there no customer input using --provider
-	local.StringVar(&pc.PipelineProvider, "provider", "",
-		"The pipeline provider to use (github for Github Actions and azdo for Azure Pipelines).")
+	local.StringVar(
+		&pc.PipelineProvider,
+		"provider",
+		"",
+		"The pipeline provider to use (github for Github Actions and azdo for Azure Pipelines).",
+	)
+	local.StringVar(
+		&pc.PipelineEnvironmentName,
+		"ci-environment",
+		"",
+		"The name of the CI environment to use for the pipeline.",
+	)
 	pc.envFlag.Bind(local, global)
 	pc.global = global
 }

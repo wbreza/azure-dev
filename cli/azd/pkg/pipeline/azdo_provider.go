@@ -695,6 +695,7 @@ func (p *AzdoCiProvider) configureConnection(
 	provisioningProvider provisioning.Options,
 	credentials json.RawMessage,
 	authType PipelineAuthType,
+	ciEnvironmentName string,
 ) error {
 
 	azureCredentials, err := parseCredentials(ctx, credentials)
@@ -744,6 +745,7 @@ func (p *AzdoCiProvider) configurePipeline(
 	ctx context.Context,
 	repoDetails *gitRepositoryDetails,
 	provisioningProvider provisioning.Options,
+	ciEnvironmentName string,
 ) (*CiPipeline, error) {
 	details := repoDetails.details.(*AzdoRepositoryDetails)
 

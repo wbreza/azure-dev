@@ -90,6 +90,7 @@ type CiProvider interface {
 		ctx context.Context,
 		repoDetails *gitRepositoryDetails,
 		provisioningProvider provisioning.Options,
+		ciEnvironmentName string,
 	) (*CiPipeline, error)
 	// configureConnection use the credential to set up the connection from the pipeline
 	// to Azure
@@ -99,6 +100,7 @@ type CiProvider interface {
 		provisioningProvider provisioning.Options,
 		credential json.RawMessage,
 		authType PipelineAuthType,
+		ciEnvironmentName string,
 	) error
 }
 

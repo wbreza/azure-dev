@@ -35,10 +35,13 @@ type GitHubCli interface {
 	tools.ExternalTool
 	GetAuthStatus(ctx context.Context, hostname string) (AuthStatus, error)
 	ListSecrets(ctx context.Context, repo string) error
-	SetSecret(ctx context.Context, repo string, name string, value string) error
-	SetVariable(ctx context.Context, repoSlug string, name string, value string) error
+	SetSecret(ctx context.Context, repo string, name string, value string, environment *string) error
+	SetVariable(ctx context.Context, repoSlug string, name string, value string, environment *string) error
 	Login(ctx context.Context, hostname string) error
 	ListRepositories(ctx context.Context) ([]GhCliRepository, error)
+	ListEnvironments(ctx context.Context, repoSlug string) ([]*GhCliEnvironment, error)
+	GetEnvironment(ctx context.Context, repoSlug string, name string) (*GhCliEnvironment, error)
+	CreateEnvironment(ctx context.Context, repoSlug string, name string) (*GhCliEnvironment, error)
 	ViewRepository(ctx context.Context, name string) (GhCliRepository, error)
 	CreatePrivateRepository(ctx context.Context, name string) error
 	GetGitProtocolType(ctx context.Context) (string, error)
@@ -281,6 +284,11 @@ type GhCliRepository struct {
 	SshUrl string
 }
 
+type GhCliEnvironment struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+}
+
 func (cli *ghCli) ListRepositories(ctx context.Context) ([]GhCliRepository, error) {
 	runArgs := cli.newRunArgs("repo", "list", "--no-archived", "--json", "nameWithOwner,url,sshUrl")
 	res, err := cli.run(ctx, runArgs)
@@ -295,6 +303,57 @@ func (cli *ghCli) ListRepositories(ctx context.Context) ([]GhCliRepository, erro
 	}
 
 	return repos, nil
+}
+
+func (cli *ghCli) ListEnvironments(ctx context.Context, repoSlug string) ([]*GhCliEnvironment, error) {
+	url := fmt.Sprintf("/%s/environments", repoSlug)
+	runArgs := cli.newRunArgs("api", url)
+	res, err := cli.run(ctx, runArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving github environments: %w", err)
+	}
+
+	var environments []*GhCliEnvironment
+
+	if err := json.Unmarshal([]byte(res.Stdout), &environments); err != nil {
+		return nil, fmt.Errorf("could not unmarshal output as a []*GhCliEnvironment: %w, output: %s", err, res.Stdout)
+	}
+
+	return environments, nil
+}
+
+func (cli *ghCli) GetEnvironment(ctx context.Context, repoSlug string, name string) (*GhCliEnvironment, error) {
+	url := fmt.Sprintf("/%s/environments/%s", repoSlug, name)
+	runArgs := cli.newRunArgs("api", url)
+	res, err := cli.run(ctx, runArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving github environment with name '%s': %w", name, err)
+	}
+
+	var environment GhCliEnvironment
+
+	if err := json.Unmarshal([]byte(res.Stdout), &environment); err != nil {
+		return nil, fmt.Errorf("could not unmarshal output as a GhCliEnvironment: %w, output: %s", err, res.Stdout)
+	}
+
+	return &environment, nil
+}
+
+func (cli *ghCli) CreateEnvironment(ctx context.Context, repoSlug string, name string) (*GhCliEnvironment, error) {
+	url := fmt.Sprintf("/%s/environments/%s", repoSlug, name)
+	runArgs := cli.newRunArgs("api", url, "-X", "PUT")
+	res, err := cli.run(ctx, runArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating github environment with name '%s': %w", name, err)
+	}
+
+	var environment GhCliEnvironment
+
+	if err := json.Unmarshal([]byte(res.Stdout), &environment); err != nil {
+		return nil, fmt.Errorf("could not unmarshal output as a GhCliEnvironment: %w, output: %s", err, res.Stdout)
+	}
+
+	return &environment, nil
 }
 
 func (cli *ghCli) ViewRepository(ctx context.Context, name string) (GhCliRepository, error) {
