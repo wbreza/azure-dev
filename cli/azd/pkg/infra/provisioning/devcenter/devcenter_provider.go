@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	DevCenterEnvName              = "AZURE_DEVCENTER_NAME"
-	DevCenterCatalogEnvName       = "AZURE_DEVCENTER_CATALOG_NAME"
-	DevCenterProjectEnvName       = "AZURE_DEVCENTER_PROJECT_NAME"
-	DevCenterEnvTypeEnvName       = "AZURE_DEVCENTER_ENV_TYPE_NAME"
-	DevCenterEnvDefinitionEnvName = "AZURE_DEVCENTER_ENV_DEFINITION_NAME"
+	DevCenterNamePath          = "devCenter.name"
+	DevCenterCatalogPath       = "devCenter.catalog"
+	DevCenterProjectPath       = "devCenter.project"
+	DevCenterEnvTypePath       = "devCenter.environmentType"
+	DevCenterEnvDefinitionPath = "devCenter.environmentDefinition"
 )
 
 type DevCenterConfig struct {
@@ -44,6 +44,7 @@ func NewDevCenterProvider(
 	return &DevCenterProvider{
 		console:         console,
 		env:             env,
+		envManager:      envManager,
 		devCenterClient: devCenterClient,
 		prompter:        prompter,
 	}
@@ -153,7 +154,7 @@ func (p *DevCenterProvider) Destroy(ctx context.Context, options DestroyOptions)
 // EnsureEnv ensures that the environment is configured for the Dev Center provider.
 // Require selection for devcenter, project, catalog, environment type, and environment definition
 func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
-	devCenterName := p.env.Getenv(DevCenterEnvName)
+	devCenterName := p.env.Getenv(DevCenterNamePath)
 	var err error
 
 	if devCenterName == "" {
@@ -161,43 +162,43 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		p.env.DotenvSet(DevCenterEnvName, devCenterName)
+		p.env.DotenvSet(DevCenterNamePath, devCenterName)
 	}
 
-	projectName := p.env.Getenv(DevCenterProjectEnvName)
+	projectName := p.env.Getenv(DevCenterProjectPath)
 	if projectName == "" {
 		projectName, err = p.prompter.PromptProject(ctx, devCenterName)
 		if err != nil {
 			return err
 		}
-		p.env.DotenvSet(DevCenterProjectEnvName, projectName)
+		p.env.DotenvSet(DevCenterProjectPath, projectName)
 	}
 
-	catalogName := p.env.Getenv(DevCenterCatalogEnvName)
+	catalogName := p.env.Getenv(DevCenterCatalogPath)
 	if catalogName == "" {
 		catalogName, err = p.prompter.PromptCatalog(ctx, devCenterName, projectName)
 		if err != nil {
 			return err
 		}
-		p.env.DotenvSet(DevCenterCatalogEnvName, catalogName)
+		p.env.DotenvSet(DevCenterCatalogPath, catalogName)
 	}
 
-	envTypeName := p.env.Getenv(DevCenterEnvTypeEnvName)
+	envTypeName := p.env.Getenv(DevCenterEnvTypePath)
 	if envTypeName == "" {
 		envTypeName, err = p.prompter.PromptEnvironmentType(ctx, devCenterName, projectName)
 		if err != nil {
 			return err
 		}
-		p.env.DotenvSet(DevCenterEnvTypeEnvName, envTypeName)
+		p.env.DotenvSet(DevCenterEnvTypePath, envTypeName)
 	}
 
-	envDefinitionName := p.env.Getenv(DevCenterEnvDefinitionEnvName)
+	envDefinitionName := p.env.Getenv(DevCenterEnvDefinitionPath)
 	if envDefinitionName == "" {
 		envDefinitionName, err = p.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
 		if err != nil {
 			return err
 		}
-		p.env.DotenvSet(DevCenterEnvDefinitionEnvName, envDefinitionName)
+		p.env.DotenvSet(DevCenterEnvDefinitionPath, envDefinitionName)
 	}
 
 	if err := p.envManager.Save(ctx, p.env); err != nil {
@@ -208,29 +209,29 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 }
 
 func (p *DevCenterProvider) getDevCenterConfig() (*DevCenterConfig, error) {
-	devCenterName := p.env.Getenv(DevCenterEnvName)
+	devCenterName := p.env.Getenv(DevCenterNamePath)
 	if devCenterName == "" {
-		return nil, fmt.Errorf("missing environment variable %s", DevCenterEnvName)
+		return nil, fmt.Errorf("missing environment variable %s", DevCenterNamePath)
 	}
 
-	projectName := p.env.Getenv(DevCenterProjectEnvName)
+	projectName := p.env.Getenv(DevCenterProjectPath)
 	if projectName == "" {
-		return nil, fmt.Errorf("missing environment variable %s", DevCenterProjectEnvName)
+		return nil, fmt.Errorf("missing environment variable %s", DevCenterProjectPath)
 	}
 
-	catalogName := p.env.Getenv(DevCenterCatalogEnvName)
+	catalogName := p.env.Getenv(DevCenterCatalogPath)
 	if catalogName == "" {
-		return nil, fmt.Errorf("missing environment variable %s", DevCenterCatalogEnvName)
+		return nil, fmt.Errorf("missing environment variable %s", DevCenterCatalogPath)
 	}
 
-	envTypeName := p.env.Getenv(DevCenterEnvTypeEnvName)
+	envTypeName := p.env.Getenv(DevCenterEnvTypePath)
 	if envTypeName == "" {
-		return nil, fmt.Errorf("missing environment variable %s", DevCenterEnvTypeEnvName)
+		return nil, fmt.Errorf("missing environment variable %s", DevCenterEnvTypePath)
 	}
 
-	envDefinitionName := p.env.Getenv(DevCenterEnvDefinitionEnvName)
+	envDefinitionName := p.env.Getenv(DevCenterEnvDefinitionPath)
 	if envDefinitionName == "" {
-		return nil, fmt.Errorf("missing environment variable %s", DevCenterEnvDefinitionEnvName)
+		return nil, fmt.Errorf("missing environment variable %s", DevCenterEnvDefinitionPath)
 	}
 
 	return &DevCenterConfig{

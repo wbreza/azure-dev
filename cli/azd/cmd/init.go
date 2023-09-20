@@ -371,7 +371,7 @@ func (i *initAction) initializeEnv(
 	// If the template includes any metadata values, set them in the environment
 	if values != nil {
 		for key, value := range values {
-			env.DotenvSet(key, value)
+			env.Config.Set(key, value)
 		}
 	}
 
