@@ -479,6 +479,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterTransient(provisioning.NewManager)
 	container.RegisterSingleton(provisioning.NewPrincipalIdProvider)
 	container.RegisterSingleton(prompt.NewDefaultPrompter)
+	container.RegisterSingleton(devcenter.NewPrompter)
 
 	// Provisioning Providers
 	provisionProviderMap := map[provisioning.ProviderKind]any{
