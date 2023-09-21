@@ -302,7 +302,7 @@ func (c *devCenterClient) host(ctx context.Context, devCenter *DevCenter) (strin
 	})
 
 	if index < 0 {
-		return "", errors.New("failed to find dev center")
+		return "", fmt.Errorf("failed to find dev center endpoint: '%s' or name: '%s'", devCenter.ServiceUri, devCenter.Name)
 	}
 
 	return devCenterList[index].ServiceUri, nil

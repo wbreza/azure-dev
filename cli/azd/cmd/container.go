@@ -16,10 +16,11 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/alpha"
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
-	"github.com/azure/azure-dev/cli/azd/pkg/azsdk/storage"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk"
+	"github.com/azure/azure-dev/cli/azd/pkg/azsdk/storage"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
 	"github.com/azure/azure-dev/cli/azd/pkg/containerapps"
+	"github.com/azure/azure-dev/cli/azd/pkg/devcenter"
 	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
@@ -27,7 +28,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/httputil"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	infraBicep "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/bicep"
-	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/devcenter"
+	infraDevCenter "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/devcenter"
 	infraTerraform "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/terraform"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
@@ -402,6 +403,38 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		})
 	})
 
+	// DevCenter Config
+	container.RegisterSingleton(func(
+		projectConfig *project.ProjectConfig,
+		env *environment.Environment,
+	) (*devcenter.Config, error) {
+		// Load deventer configuration in the following precedence:
+		// 1. Environment variables (AZURE_DEVCENTER_*)
+		// 2. Azd Environment configuration (devCenter node)
+		// 3. Azd Project configuration from azure.yaml (devCenter node)
+
+		envVarConfig := &devcenter.Config{
+			Name:                  os.Getenv(devcenter.DevCenterCatalogEnvName),
+			Project:               os.Getenv(devcenter.DevCenterProjectEnvName),
+			Catalog:               os.Getenv(devcenter.DevCenterCatalogEnvName),
+			EnvironmentType:       os.Getenv(devcenter.DevCenterEnvTypeEnvName),
+			EnvironmentDefinition: os.Getenv(devcenter.DevCenterEnvDefinitionEnvName),
+		}
+
+		var environmentConfig *devcenter.Config
+		devCenterNode, exists := env.Config.Get("devCenter")
+		if exists {
+			value, err := devcenter.ParseConfig(devCenterNode)
+			if err != nil {
+				return nil, err
+			}
+
+			environmentConfig = value
+		}
+
+		return devcenter.MergeConfigs(envVarConfig, environmentConfig, projectConfig.DevCenter), nil
+	})
+
 	container.RegisterSingleton(func(
 		ctx context.Context,
 		credential azcore.TokenCredential,
@@ -479,13 +512,13 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterTransient(provisioning.NewManager)
 	container.RegisterSingleton(provisioning.NewPrincipalIdProvider)
 	container.RegisterSingleton(prompt.NewDefaultPrompter)
-	container.RegisterSingleton(devcenter.NewPrompter)
+	container.RegisterSingleton(infraDevCenter.NewPrompter)
 
 	// Provisioning Providers
 	provisionProviderMap := map[provisioning.ProviderKind]any{
 		provisioning.Bicep:     infraBicep.NewBicepProvider,
 		provisioning.Terraform: infraTerraform.NewTerraformProvider,
-		provisioning.DevCenter: devcenter.NewDevCenterProvider,
+		provisioning.DevCenter: infraDevCenter.NewDevCenterProvider,
 	}
 
 	for provider, constructor := range provisionProviderMap {

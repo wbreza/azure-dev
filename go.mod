@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.2
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.8.0-beta.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.6.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.3.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appplatform/armappplatform/v2 v2.0.0-beta.1
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appservice/armappservice v1.0.0
@@ -61,17 +61,15 @@ require github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/arma
 require github.com/bmatcuk/doublestar/v4 v4.6.0
 
 require (
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.1.1
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph v0.7.1
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.1.0
 	github.com/adam-lavrik/go-imath v0.0.0-20210910152346-265a42a96f0b
 )
 
 require github.com/golang-jwt/jwt/v5 v5.0.0 // indirect
 
-require (
-	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2 v2.1.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph v0.8.1 // indirect
-	github.com/stretchr/objx v0.5.0 // indirect
-)
+require github.com/stretchr/objx v0.5.0 // indirect
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.1 // indirect
