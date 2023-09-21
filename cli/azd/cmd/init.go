@@ -24,6 +24,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
+	"github.com/azure/azure-dev/cli/azd/pkg/project"
 	"github.com/azure/azure-dev/cli/azd/pkg/templates"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/azcli"
@@ -193,8 +194,11 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 			return nil, err
 		}
 
-		err = i.initializeEnv(ctx, azdCtx, template.Metadata)
-		if err != nil {
+		if err := i.initializeEnv(ctx, azdCtx, &template.Metadata); err != nil {
+			return nil, err
+		}
+
+		if err := i.initializeProject(ctx, azdCtx, &template.Metadata); err != nil {
 			return nil, err
 		}
 	case initFromApp:
@@ -320,10 +324,35 @@ func (i *initAction) initializeTemplate(
 	return template, nil
 }
 
+// Initialize the project with any metadata values from the template
+func (i *initAction) initializeProject(
+	ctx context.Context,
+	azdCtx *azdcontext.AzdContext,
+	templateMetaData *templates.Metadata,
+) error {
+	if templateMetaData == nil {
+		return nil
+	}
+
+	projectPath := azdCtx.ProjectPath()
+	projectConfig, err := project.LoadConfig(ctx, projectPath)
+	if err != nil {
+		return fmt.Errorf("loading project config: %w", err)
+	}
+
+	for key, value := range templateMetaData.Project {
+		if err := projectConfig.Set(key, value); err != nil {
+			return fmt.Errorf("setting project config: %w", err)
+		}
+	}
+
+	return project.SaveConfig(ctx, projectConfig, projectPath)
+}
+
 func (i *initAction) initializeEnv(
 	ctx context.Context,
 	azdCtx *azdcontext.AzdContext,
-	values map[string]string) error {
+	templateMetadata *templates.Metadata) error {
 	envName, err := azdCtx.GetDefaultEnvironmentName()
 	if err != nil {
 		return fmt.Errorf("retrieving default environment name: %w", err)
@@ -369,14 +398,20 @@ func (i *initAction) initializeEnv(
 	}
 
 	// If the template includes any metadata values, set them in the environment
-	if values != nil {
-		for key, value := range values {
-			env.Config.Set(key, value)
+	if templateMetadata != nil {
+		for key, value := range templateMetadata.Variables {
+			env.DotenvSet(key, value)
 		}
-	}
 
-	if err := envManager.Save(ctx, env); err != nil {
-		return fmt.Errorf("saving environment: %w", err)
+		for key, value := range templateMetadata.Config {
+			if err := env.Config.Set(key, value); err != nil {
+				return fmt.Errorf("setting environment config: %w", err)
+			}
+		}
+
+		if err := envManager.Save(ctx, env); err != nil {
+			return fmt.Errorf("saving environment: %w", err)
+		}
 	}
 
 	return nil

@@ -78,6 +78,25 @@ func NewEnvironmentItemRequestBuilder(
 	return builder
 }
 
+func (c *EnvironmentItemRequestBuilder) Get(ctx context.Context) (*Environment, error) {
+	requestUrl := fmt.Sprintf("projects/%s/users/me/environments/%s", c.projectName, c.id)
+	req, err := c.createRequest(ctx, http.MethodGet, requestUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating request: %w", err)
+	}
+
+	res, err := c.client.pipeline.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if !runtime.HasStatusCode(res, http.StatusOK) {
+		return nil, runtime.NewResponseError(res)
+	}
+
+	return httputil.ReadRawResponse[Environment](res)
+}
+
 func (c *EnvironmentItemRequestBuilder) BeginPut(
 	ctx context.Context,
 	spec EnvironmentSpec,

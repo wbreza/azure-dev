@@ -2,10 +2,8 @@ package devcentersdk
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"regexp"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 )
@@ -107,36 +105,4 @@ func (c *ProjectItemRequestBuilder) Get(ctx context.Context) (*Project, error) {
 	}
 
 	return project, nil
-}
-
-//
-//nolint:lll
-var resourceIdRegex = regexp.MustCompile(
-	`\/subscriptions\/(?P<subscriptionId>.+?)\/resourceGroups\/(?P<resourceGroup>.+?)\/providers\/(?P<resourceProvider>.+?)\/(?P<resourcePath>.+?)\/(?P<resourceName>.+)`,
-)
-
-func resourceFromId(resourceId string) (*ResourceId, error) {
-	// Find matches and extract named values
-	match := resourceIdRegex.FindStringSubmatch(resourceId)
-
-	if len(match) == 0 {
-		return nil, errors.New("no match found")
-	}
-
-	namedValues := make(map[string]string)
-
-	// The first element in the match slice is the entire matched string,
-	// so we start the loop from 1 to skip it.
-	for i, name := range resourceIdRegex.SubexpNames()[1:] {
-		namedValues[name] = match[i+1]
-	}
-
-	return &ResourceId{
-		Id:             resourceId,
-		SubscriptionId: namedValues["subscriptionId"],
-		ResourceGroup:  namedValues["resourceGroup"],
-		Provider:       namedValues["resourceProvider"],
-		ResourcePath:   namedValues["resourcePath"],
-		ResourceName:   namedValues["resourceName"],
-	}, nil
 }

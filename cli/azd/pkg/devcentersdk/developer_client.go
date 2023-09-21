@@ -184,12 +184,12 @@ func (c *devCenterClient) projectList(ctx context.Context) ([]*Project, error) {
 
 	projects = []*Project{}
 	for _, resource := range resources {
-		projectId, err := resourceFromId(resource.Id)
+		projectId, err := NewResourceId(resource.Id)
 		if err != nil {
 			return nil, fmt.Errorf("failed parsing resource id: %w", err)
 		}
 
-		devCenterId, err := resourceFromId(resource.Properties["devCenterId"].(string))
+		devCenterId, err := NewResourceId(resource.Properties["devCenterId"].(string))
 		if err != nil {
 			return nil, fmt.Errorf("failed parsing dev center id: %w", err)
 		}

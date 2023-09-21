@@ -1,6 +1,10 @@
 package devcentersdk
 
-import "time"
+import (
+	"errors"
+	"regexp"
+	"time"
+)
 
 type DevCenter struct {
 	Id             string
@@ -39,6 +43,71 @@ type ResourceId struct {
 	Provider       string
 	ResourcePath   string
 	ResourceName   string
+}
+
+type ResourceGroupId struct {
+	Id             string
+	SubscriptionId string
+	Name           string
+}
+
+//nolint:lll
+var (
+	resourceIdRegex = regexp.MustCompile(
+		`\/subscriptions\/(?P<subscriptionId>.+?)\/resourceGroups\/(?P<resourceGroup>.+?)\/providers\/(?P<resourceProvider>.+?)\/(?P<resourcePath>.+?)\/(?P<resourceName>.+)`,
+	)
+	resourceGroupIdRegex = regexp.MustCompile(
+		`\/subscriptions\/(?P<subscriptionId>.+?)\/resourceGroups\/(?P<resourceGroup>.+)`,
+	)
+)
+
+func NewResourceId(resourceId string) (*ResourceId, error) {
+	// Find matches and extract named values
+	matches := resourceIdRegex.FindStringSubmatch(resourceId)
+
+	if len(matches) == 0 {
+		return nil, errors.New("no match found")
+	}
+
+	namedValues := getRegExpNamedValues(resourceIdRegex, matches)
+
+	return &ResourceId{
+		Id:             resourceId,
+		SubscriptionId: namedValues["subscriptionId"],
+		ResourceGroup:  namedValues["resourceGroup"],
+		Provider:       namedValues["resourceProvider"],
+		ResourcePath:   namedValues["resourcePath"],
+		ResourceName:   namedValues["resourceName"],
+	}, nil
+}
+
+func NewResourceGroupId(resourceId string) (*ResourceGroupId, error) {
+	// Find matches and extract named values
+	matches := resourceGroupIdRegex.FindStringSubmatch(resourceId)
+
+	if len(matches) == 0 {
+		return nil, errors.New("no match found")
+	}
+
+	namedValues := getRegExpNamedValues(resourceGroupIdRegex, matches)
+
+	return &ResourceGroupId{
+		Id:             resourceId,
+		SubscriptionId: namedValues["subscriptionId"],
+		Name:           namedValues["resourceGroup"],
+	}, nil
+}
+
+func getRegExpNamedValues(regexp *regexp.Regexp, matches []string) map[string]string {
+	namedValues := make(map[string]string)
+
+	// The first element in the match slice is the entire matched string,
+	// so we start the loop from 1 to skip it.
+	for i, name := range regexp.SubexpNames()[1:] {
+		namedValues[name] = matches[i+1]
+	}
+
+	return namedValues
 }
 
 type ProjectListResponse struct {

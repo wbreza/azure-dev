@@ -16,12 +16,13 @@ const (
 	DevCenterEnvDefinitionPath = "devCenter.environmentDefinition"
 )
 
+// Config provides the Azure DevCenter configuration used for devcenter enabled projects
 type Config struct {
-	Name                  string `json:"name" yaml:"name"`
-	Catalog               string `json:"catalog" yaml:"catalog"`
-	Project               string `json:"project" yaml:"project"`
-	EnvironmentType       string `json:"environmentType" yaml:"environmentType"`
-	EnvironmentDefinition string `json:"environmentDefinition" yaml:"environmentDefinition"`
+	Name                  string `json:"name,omitempty"                  yaml:"name,omitempty"`
+	Catalog               string `json:"catalog,omitempty"               yaml:"catalog,omitempty"`
+	Project               string `json:"project,omitempty"               yaml:"project,omitempty"`
+	EnvironmentType       string `json:"environmentType,omitempty"       yaml:"environmentType,omitempty"`
+	EnvironmentDefinition string `json:"environmentDefinition,omitempty" yaml:"environmentDefinition,omitempty"`
 }
 
 func (c *Config) IsValid() bool {

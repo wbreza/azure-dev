@@ -221,7 +221,8 @@ func (p *Prompter) PromptParameters(
 			continue
 		}
 
-		paramValue, exists := env.Config.Get(fmt.Sprintf("provision.%s", param.Name))
+		paramPath := fmt.Sprintf("%s.%s", ProvisionParametersConfigPath, param.Name)
+		paramValue, exists := env.Config.Get(paramPath)
 		if !exists {
 			promptOptions := input.ConsoleOptions{
 				DefaultValue: param.Default,

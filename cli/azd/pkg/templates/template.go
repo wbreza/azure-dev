@@ -26,7 +26,13 @@ type Template struct {
 	RepositoryPath string `json:"repositoryPath"`
 
 	// Additional metadata about the template
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Metadata Metadata `json:"metadata,omitempty"`
+}
+
+type Metadata struct {
+	Variables map[string]string `json:"variables,omitempty"`
+	Config    map[string]string `json:"config,omitempty"`
+	Project   map[string]string `json:"project,omitempty"`
 }
 
 // Display writes a string representation of the template suitable for display.
