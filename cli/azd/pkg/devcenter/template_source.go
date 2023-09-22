@@ -1,4 +1,4 @@
-package templates
+package devcenter
 
 import (
 	"context"
@@ -7,31 +7,36 @@ import (
 	"sync"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
+	"github.com/azure/azure-dev/cli/azd/pkg/templates"
 	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 )
 
-type DevCenterSource struct {
+const (
+	SourceKindDevCenter templates.SourceKind = "devcenter"
+)
+
+type TemplateSource struct {
 	devCenterClient devcentersdk.DevCenterClient
 }
 
-func NewDevCenterSource(devCenterClient devcentersdk.DevCenterClient) *DevCenterSource {
-	return &DevCenterSource{
+func NewTemplateSource(devCenterClient devcentersdk.DevCenterClient) templates.Source {
+	return &TemplateSource{
 		devCenterClient: devCenterClient,
 	}
 }
 
-func (s *DevCenterSource) Name() string {
+func (s *TemplateSource) Name() string {
 	return "DevCenter"
 }
 
-func (s *DevCenterSource) ListTemplates(ctx context.Context) ([]*Template, error) {
+func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Template, error) {
 	projects, err := s.devCenterClient.WritableProjects(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting writable projects: %w", err)
 	}
 
-	templatesChan := make(chan *Template)
+	templatesChan := make(chan *templates.Template)
 	errorsChan := make(chan error)
 
 	// Perform the lookup and checking for projects in parallel to speed up the process
@@ -85,7 +90,7 @@ func (s *DevCenterSource) ListTemplates(ctx context.Context) ([]*Template, error
 
 					// List an available AZD template for each repo url that is referenced in the template
 					for _, url := range repoUrls {
-						templatesChan <- &Template{
+						templatesChan <- &templates.Template{
 							Id:             definitionPath,
 							Name:           fmt.Sprintf("%s (%s)", envDefinition.Name, project.Name),
 							Source:         fmt.Sprintf("%s/%s/%s", project.DevCenter.Name, project.Name, envDefinition.CatalogName),
@@ -93,7 +98,7 @@ func (s *DevCenterSource) ListTemplates(ctx context.Context) ([]*Template, error
 							RepositoryPath: url,
 
 							// Metadata will be used when creating any azd environments that are based on this template
-							Metadata: Metadata{
+							Metadata: templates.Metadata{
 								Project: map[string]string{
 									"devCenter.name":                  project.DevCenter.Name,
 									"devCenter.project":               project.Name,
@@ -115,7 +120,7 @@ func (s *DevCenterSource) ListTemplates(ctx context.Context) ([]*Template, error
 		close(errorsChan)
 	}()
 
-	templates := []*Template{}
+	templates := []*templates.Template{}
 	for template := range templatesChan {
 		templates = append(templates, template)
 	}
@@ -132,13 +137,13 @@ func (s *DevCenterSource) ListTemplates(ctx context.Context) ([]*Template, error
 	return templates, nil
 }
 
-func (s *DevCenterSource) GetTemplate(ctx context.Context, path string) (*Template, error) {
-	templates, err := s.ListTemplates(ctx)
+func (s *TemplateSource) GetTemplate(ctx context.Context, path string) (*templates.Template, error) {
+	templateList, err := s.ListTemplates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to list templates: %w", err)
 	}
 
-	for _, template := range templates {
+	for _, template := range templateList {
 		if template.Id == path {
 			return template, nil
 		}
@@ -148,5 +153,5 @@ func (s *DevCenterSource) GetTemplate(ctx context.Context, path string) (*Templa
 		}
 	}
 
-	return nil, fmt.Errorf("template with path '%s' was not found, %w", path, ErrTemplateNotFound)
+	return nil, fmt.Errorf("template with path '%s' was not found, %w", path, templates.ErrTemplateNotFound)
 }

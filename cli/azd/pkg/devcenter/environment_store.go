@@ -20,7 +20,11 @@ type EnvironmentStore struct {
 	manager         *Manager
 }
 
-func NewEnvironmentStore(config *Config, devCenterClient devcentersdk.DevCenterClient, manager *Manager) environment.RemoteDataStore {
+func NewEnvironmentStore(
+	config *Config,
+	devCenterClient devcentersdk.DevCenterClient,
+	manager *Manager,
+) environment.RemoteDataStore {
 	return &EnvironmentStore{
 		config:          config,
 		devCenterClient: devCenterClient,
@@ -37,8 +41,15 @@ func (s *EnvironmentStore) ConfigPath(env *environment.Environment) string {
 }
 
 func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnvironment, error) {
+	// If we don't have a valid devcenter configuration yet
+	// then prompt the user to initialize the correct configuration then provide the listing
 	if !s.config.IsValid() {
-		return []*contracts.EnvListEnvironment{}, nil
+		updatedConfig, err := s.manager.Initialize(ctx)
+		if err != nil {
+			return []*contracts.EnvListEnvironment{}, nil
+		}
+
+		s.config = updatedConfig
 	}
 
 	environmentListResponse, err := s.devCenterClient.
@@ -51,6 +62,7 @@ func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnviro
 		return nil, fmt.Errorf("failed to get devcenter environment list: %w", err)
 	}
 
+	// Filter the environment list to those matching the configured environment definition
 	matches := []*contracts.EnvListEnvironment{}
 	for _, environment := range environmentListResponse.Value {
 		if environment.EnvironmentDefinitionName == s.config.EnvironmentDefinition {
@@ -62,10 +74,14 @@ func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnviro
 	}
 
 	return matches, nil
-
 }
 
 func (s *EnvironmentStore) Get(ctx context.Context, name string) (*environment.Environment, error) {
+	// If the devcenter configuration is not valid then we don't have enough information to query for the environment
+	if !s.config.IsValid() {
+		return nil, fmt.Errorf("%s %w", name, environment.ErrNotFound)
+	}
+
 	envs, err := s.List(ctx)
 	if err != nil {
 		return nil, err
@@ -105,15 +121,27 @@ func (s *EnvironmentStore) Reload(ctx context.Context, env *environment.Environm
 		return fmt.Errorf("failed to get environment outputs: %w", err)
 	}
 
+	// Set the environment variables for the environment
 	for key, outputParam := range outputs {
 		env.DotenvSet(key, fmt.Sprintf("%v", outputParam.Value))
 	}
 
-	env.Config.Set(DevCenterNamePath, s.config.Name)
-	env.Config.Set(DevCenterProjectPath, s.config.Project)
-	env.Config.Set(DevCenterCatalogPath, s.config.Catalog)
-	env.Config.Set(DevCenterEnvTypePath, s.config.EnvironmentType)
-	env.Config.Set(DevCenterEnvDefinitionPath, s.config.EnvironmentDefinition)
+	// Set the devcenter configuration for the environment
+	if err := env.Config.Set(DevCenterNamePath, s.config.Name); err != nil {
+		return err
+	}
+	if err := env.Config.Set(DevCenterProjectPath, s.config.Project); err != nil {
+		return err
+	}
+	if err := env.Config.Set(DevCenterCatalogPath, s.config.Catalog); err != nil {
+		return err
+	}
+	if err := env.Config.Set(DevCenterEnvTypePath, s.config.EnvironmentType); err != nil {
+		return err
+	}
+	if err := env.Config.Set(DevCenterEnvDefinitionPath, s.config.EnvironmentDefinition); err != nil {
+		return err
+	}
 
 	return nil
 }

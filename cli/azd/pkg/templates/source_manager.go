@@ -207,14 +207,11 @@ func (sm *sourceManager) CreateSource(ctx context.Context, config *SourceConfig)
 		source, err = NewAwesomeAzdTemplateSource(ctx, SourceAwesomeAzd.Name, SourceAwesomeAzd.Location, sm.httpClient)
 	case SourceKindResource:
 		source, err = NewJsonTemplateSource(SourceDefault.Name, string(resources.TemplatesJson))
-	case SourceKindDevCenter:
-		var devCenterSource *DevCenterSource
-		err = sm.serviceLocator.Resolve(&devCenterSource)
-		if err == nil {
-			source = devCenterSource
-		}
 	default:
-		err = fmt.Errorf("%w, '%s'", ErrSourceTypeInvalid, config.Type)
+		err = sm.serviceLocator.ResolveNamed(string(config.Type), &source)
+		if err != nil {
+			err = fmt.Errorf("%w, '%s', %w", ErrSourceTypeInvalid, config.Type, err)
+		}
 	}
 
 	if err != nil {

@@ -27,8 +27,6 @@ type Config struct {
 
 func (c *Config) IsValid() bool {
 	return c.Name != "" &&
-		c.Catalog != "" &&
 		c.Project != "" &&
-		c.EnvironmentType != "" &&
 		c.EnvironmentDefinition != ""
 }

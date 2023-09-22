@@ -417,6 +417,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterSingleton(func(
 		ctx context.Context,
 		azdCtx *azdcontext.AzdContext,
+		userConfigManager config.UserConfigManager,
 		projectConfig *project.ProjectConfig,
 		localEnvStore environment.LocalDataStore,
 	) (*devcenter.Config, error) {
@@ -424,7 +425,9 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		// 1. Environment variables (AZURE_DEVCENTER_*)
 		// 2. Azd Environment configuration (devCenter node)
 		// 3. Azd Project configuration from azure.yaml (devCenter node)
+		// 4. Azd user configuration from config.json (devCenter node)
 
+		// Shell environment variables
 		envVarConfig := &devcenter.Config{
 			Name:                  os.Getenv(devcenter.DevCenterCatalogEnvName),
 			Project:               os.Getenv(devcenter.DevCenterProjectEnvName),
@@ -433,6 +436,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			EnvironmentDefinition: os.Getenv(devcenter.DevCenterEnvDefinitionEnvName),
 		}
 
+		// Local environment configuration
 		var environmentConfig *devcenter.Config
 		defaultEnvName, err := azdCtx.GetDefaultEnvironmentName()
 		if err != nil {
@@ -453,7 +457,29 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			}
 		}
 
-		return devcenter.MergeConfigs(envVarConfig, environmentConfig, projectConfig.DevCenter), nil
+		// User Configuration
+		var userConfig *devcenter.Config
+		azdConfig, err := userConfigManager.Load()
+		if err != nil {
+			userConfig = &devcenter.Config{}
+		} else {
+			devCenterNode, exists := azdConfig.Get("devCenter")
+			if exists {
+				value, err := devcenter.ParseConfig(devCenterNode)
+				if err != nil {
+					return nil, err
+				}
+
+				userConfig = value
+			}
+		}
+
+		return devcenter.MergeConfigs(
+			envVarConfig,
+			environmentConfig,
+			projectConfig.DevCenter,
+			userConfig,
+		), nil
 	})
 
 	container.RegisterSingleton(func(
@@ -468,6 +494,20 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		return devcentersdk.NewDevCenterClient(credential, options)
 	})
 
+	// Templates
+	container.RegisterSingleton(templates.NewTemplateManager)
+	container.RegisterSingleton(templates.NewSourceManager)
+
+	templateSourceMap := map[templates.SourceKind]any{
+		devcenter.SourceKindDevCenter: devcenter.NewTemplateSource,
+	}
+
+	for sourceKind, constructor := range templateSourceMap {
+		if err := container.RegisterNamedSingleton(string(sourceKind), constructor); err != nil {
+			panic(fmt.Errorf("registering template source %s: %w", sourceKind, err))
+		}
+	}
+
 	container.RegisterSingleton(project.NewResourceManager)
 	container.RegisterSingleton(project.NewProjectManager)
 	container.RegisterSingleton(project.NewServiceManager)
@@ -476,9 +516,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterSingleton(config.NewUserConfigManager)
 	container.RegisterSingleton(config.NewManager)
 	container.RegisterSingleton(config.NewFileConfigManager)
-	container.RegisterSingleton(templates.NewTemplateManager)
-	container.RegisterSingleton(templates.NewSourceManager)
-	container.RegisterSingleton(templates.NewDevCenterSource)
+	container.RegisterSingleton(devcenter.NewTemplateSource)
 	container.RegisterSingleton(auth.NewManager)
 	container.RegisterSingleton(azcli.NewUserProfileService)
 	container.RegisterSingleton(account.NewSubscriptionsService)

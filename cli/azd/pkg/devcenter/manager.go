@@ -15,22 +15,65 @@ import (
 
 type Manager struct {
 	config               *Config
+	prompter             *Prompter
 	deploymentsService   azapi.Deployments
 	deploymentOperations azapi.DeploymentOperations
 }
 
-func NewManager(config *Config, deploymentsService azapi.Deployments, deploymentOperations azapi.DeploymentOperations) *Manager {
+func NewManager(
+	config *Config,
+	prompter *Prompter,
+	deploymentsService azapi.Deployments,
+	deploymentOperations azapi.DeploymentOperations,
+) *Manager {
 	return &Manager{
 		config:               config,
+		prompter:             prompter,
 		deploymentsService:   deploymentsService,
 		deploymentOperations: deploymentOperations,
 	}
 }
 
+func (m *Manager) Initialize(ctx context.Context) (*Config, error) {
+	devCenterName := m.config.Name
+	var err error
+
+	if devCenterName == "" {
+		devCenterName, err = m.prompter.PromptDevCenter(ctx)
+		if err != nil {
+			return nil, err
+		}
+		m.config.Name = devCenterName
+	}
+
+	projectName := m.config.Project
+	if projectName == "" {
+		projectName, err = m.prompter.PromptProject(ctx, devCenterName)
+		if err != nil {
+			return nil, err
+		}
+		m.config.Project = projectName
+	}
+
+	envDefinitionName := m.config.EnvironmentDefinition
+	if envDefinitionName == "" {
+		envDefinitionName, err = m.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
+		if err != nil {
+			return nil, err
+		}
+		m.config.EnvironmentDefinition = envDefinitionName
+	}
+
+	return m.config, nil
+}
+
 // getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
 // Right now this will retrieve the outputs from the latest azure deployment
 // Long term this will call into ADE Outputs API
-func (m *Manager) Outputs(ctx context.Context, env *devcentersdk.Environment) (map[string]provisioning.OutputParameter, error) {
+func (m *Manager) Outputs(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+) (map[string]provisioning.OutputParameter, error) {
 	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
 	if err != nil {
 		return nil, fmt.Errorf("failed parsing resource group id: %w", err)

@@ -60,7 +60,10 @@ func (p *ProvisionProvider) Initialize(ctx context.Context, projectPath string, 
 	return p.EnsureEnv(ctx)
 }
 
-func (p *ProvisionProvider) State(ctx context.Context, options *provisioning.StateOptions) (*provisioning.StateResult, error) {
+func (p *ProvisionProvider) State(
+	ctx context.Context,
+	options *provisioning.StateOptions,
+) (*provisioning.StateResult, error) {
 	if !p.config.IsValid() {
 		return nil, fmt.Errorf("invalid devcenter configuration")
 	}
@@ -180,7 +183,10 @@ func (p *ProvisionProvider) Preview(ctx context.Context) (*provisioning.DeployPr
 	return nil, fmt.Errorf("preview is not supported for devcenter")
 }
 
-func (p *ProvisionProvider) Destroy(ctx context.Context, options provisioning.DestroyOptions) (*provisioning.DestroyResult, error) {
+func (p *ProvisionProvider) Destroy(
+	ctx context.Context,
+	options provisioning.DestroyOptions,
+) (*provisioning.DestroyResult, error) {
 	if !p.config.IsValid() {
 		return nil, fmt.Errorf("invalid devcenter configuration")
 	}
@@ -252,64 +258,41 @@ func (p *ProvisionProvider) Destroy(ctx context.Context, options provisioning.De
 // EnsureEnv ensures that the environment is configured for the Dev Center provider.
 // Require selection for devcenter, project, catalog, environment type, and environment definition
 func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
-	devCenterName := p.config.Name
-	var err error
-
-	if devCenterName == "" {
-		devCenterName, err = p.prompter.PromptDevCenter(ctx)
-		if err != nil {
-			return err
-		}
-		p.config.Name = devCenterName
-		if err := p.env.Config.Set(DevCenterNamePath, devCenterName); err != nil {
-			return err
-		}
-	}
-
-	projectName := p.config.Project
-	if projectName == "" {
-		projectName, err = p.prompter.PromptProject(ctx, devCenterName)
-		if err != nil {
-			return err
-		}
-		p.config.Project = projectName
-		if err := p.env.Config.Set(DevCenterProjectPath, projectName); err != nil {
-			return err
-		}
-	}
-
-	catalogName := p.config.Catalog
-	if catalogName == "" {
-		catalogName, err = p.prompter.PromptCatalog(ctx, devCenterName, projectName)
-		if err != nil {
-			return err
-		}
-		p.config.Catalog = catalogName
-		if err := p.env.Config.Set(DevCenterCatalogPath, catalogName); err != nil {
-			return err
-		}
+	currentConfig := *p.config
+	updatedConfig, err := p.manager.Initialize(ctx)
+	if err != nil {
+		return err
 	}
 
 	envTypeName := p.config.EnvironmentType
 	if envTypeName == "" {
-		envTypeName, err = p.prompter.PromptEnvironmentType(ctx, devCenterName, projectName)
+		envTypeName, err = p.prompter.PromptEnvironmentType(ctx, updatedConfig.Name, updatedConfig.Project)
 		if err != nil {
 			return err
 		}
 		p.config.EnvironmentType = envTypeName
-		if err := p.env.Config.Set(DevCenterEnvTypePath, envTypeName); err != nil {
+	}
+
+	if currentConfig.Name == "" {
+		if err := p.env.Config.Set(DevCenterNamePath, updatedConfig.Name); err != nil {
 			return err
 		}
 	}
 
-	envDefinitionName := p.config.EnvironmentDefinition
-	if envDefinitionName == "" {
-		envDefinitionName, err = p.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
-		if err != nil {
+	if currentConfig.Project == "" {
+		if err := p.env.Config.Set(DevCenterProjectPath, updatedConfig.Project); err != nil {
 			return err
 		}
-		p.config.EnvironmentDefinition = envDefinitionName
-		if err := p.env.Config.Set(DevCenterEnvDefinitionPath, envDefinitionName); err != nil {
+	}
+
+	if currentConfig.EnvironmentType == "" {
+		if err := p.env.Config.Set(DevCenterEnvTypePath, updatedConfig.EnvironmentType); err != nil {
+			return err
+		}
+	}
+
+	if currentConfig.EnvironmentDefinition == "" {
+		if err := p.env.Config.Set(DevCenterEnvDefinitionPath, updatedConfig.EnvironmentDefinition); err != nil {
 			return err
 		}
 	}
@@ -336,7 +319,9 @@ func mapBicepTypeToInterfaceType(s string) provisioning.ParameterType {
 
 // Creates a normalized view of the azure output parameters and resolves inconsistencies in the output parameter name
 // casings.
-func createOutputParameters(deploymentOutputs map[string]azapi.AzCliDeploymentOutput) map[string]provisioning.OutputParameter {
+func createOutputParameters(
+	deploymentOutputs map[string]azapi.AzCliDeploymentOutput,
+) map[string]provisioning.OutputParameter {
 	outputParams := map[string]provisioning.OutputParameter{}
 
 	for key, azureParam := range deploymentOutputs {
