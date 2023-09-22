@@ -24,7 +24,6 @@ type Manager struct {
 	envManager          environment.Manager
 	env                 *environment.Environment
 	console             input.Console
-	prompter            prompt.Prompter
 	provider            Provider
 	configManager       config.UserConfigManager
 	alphaFeatureManager *alpha.FeatureManager
@@ -217,7 +216,6 @@ func NewManager(
 	console input.Console,
 	alphaFeatureManager *alpha.FeatureManager,
 	configManager config.UserConfigManager,
-	prompter prompt.Prompter,
 ) *Manager {
 	return &Manager{
 		serviceLocator:      serviceLocator,
@@ -226,7 +224,6 @@ func NewManager(
 		console:             console,
 		alphaFeatureManager: alphaFeatureManager,
 		configManager:       configManager,
-		prompter:            prompter,
 	}
 }
 
