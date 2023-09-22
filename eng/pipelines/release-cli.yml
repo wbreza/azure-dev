@@ -211,10 +211,10 @@ stages:
                 -Version "$(CLI_VERSION)"
             displayName: Set shield info
 
-          - publish: cli/azd/cover-$(AZURE_DEV_CI_OS)
-            condition: and(succeeded(), ne(variables['Skip.LiveTest'], 'true'))
-            artifact: cover-$(AZURE_DEV_CI_OS)
-            displayName: Upload code coverage
+          # - publish: cli/azd/cover-$(AZURE_DEV_CI_OS)
+          #   condition: and(succeeded(), ne(variables['Skip.LiveTest'], 'true'))
+          #   artifact: cover-$(AZURE_DEV_CI_OS)
+          #   displayName: Upload code coverage
 
           - publish: eng/shields/standalone.json
             condition: and(succeeded(), eq(variables['SetShieldInfo'], 'true'))
