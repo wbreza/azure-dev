@@ -170,7 +170,10 @@ func (p *Prompter) PromptEnvironmentType(ctx context.Context, devCenterName stri
 	return envTypeNames[selected], nil
 }
 
-func (p *Prompter) PromptEnvironmentDefinition(ctx context.Context, devCenterName, projectName string) (string, error) {
+func (p *Prompter) PromptEnvironmentDefinition(
+	ctx context.Context,
+	devCenterName, projectName string,
+) (*devcentersdk.EnvironmentDefinition, error) {
 	envDefinitions, err := p.devCenterClient.
 		DevCenterByName(devCenterName).
 		ProjectByName(projectName).
@@ -178,17 +181,17 @@ func (p *Prompter) PromptEnvironmentDefinition(ctx context.Context, devCenterNam
 		Get(ctx)
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+
+	slices.SortFunc(envDefinitions.Value, func(x, y *devcentersdk.EnvironmentDefinition) bool {
+		return x.Name < y.Name
+	})
 
 	envDefinitionNames := []string{}
 	for _, envDefinition := range envDefinitions.Value {
 		envDefinitionNames = append(envDefinitionNames, envDefinition.Name)
 	}
-
-	slices.SortFunc(envDefinitionNames, func(x, y string) bool {
-		return x < y
-	})
 
 	selected, err := p.console.Select(ctx, input.ConsoleOptions{
 		Message: "Select an environment definition:",
@@ -196,10 +199,10 @@ func (p *Prompter) PromptEnvironmentDefinition(ctx context.Context, devCenterNam
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return envDefinitionNames[selected], nil
+	return envDefinitions.Value[selected], nil
 }
 
 // Prompts the user for values defined within the environment definition parameters
@@ -248,7 +251,7 @@ func (p *Prompter) PromptParameters(
 			}
 		}
 
-		paramValues[param.Name] = paramValue
+		paramValues[param.Id] = paramValue
 	}
 
 	return paramValues, nil

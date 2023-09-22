@@ -285,6 +285,12 @@ func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
 		}
 	}
 
+	if currentConfig.Catalog == "" {
+		if err := p.env.Config.Set(DevCenterCatalogPath, updatedConfig.Catalog); err != nil {
+			return err
+		}
+	}
+
 	if currentConfig.EnvironmentType == "" {
 		if err := p.env.Config.Set(DevCenterEnvTypePath, updatedConfig.EnvironmentType); err != nil {
 			return err

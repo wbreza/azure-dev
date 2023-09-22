@@ -194,11 +194,16 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 			return nil, err
 		}
 
-		if err := i.initializeEnv(ctx, azdCtx, &template.Metadata); err != nil {
+		var templateMetadata *templates.Metadata
+		if template != nil {
+			templateMetadata = &template.Metadata
+		}
+
+		if err := i.initializeEnv(ctx, azdCtx, templateMetadata); err != nil {
 			return nil, err
 		}
 
-		if err := i.initializeProject(ctx, azdCtx, &template.Metadata); err != nil {
+		if err := i.initializeProject(ctx, azdCtx, templateMetadata); err != nil {
 			return nil, err
 		}
 	case initFromApp:

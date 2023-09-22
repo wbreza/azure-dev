@@ -57,10 +57,12 @@ func (m *Manager) Initialize(ctx context.Context) (*Config, error) {
 
 	envDefinitionName := m.config.EnvironmentDefinition
 	if envDefinitionName == "" {
-		envDefinitionName, err = m.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
+		envDefinition, err := m.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
 		if err != nil {
 			return nil, err
 		}
+		envDefinitionName = envDefinition.Name
+		m.config.Catalog = envDefinition.CatalogName
 		m.config.EnvironmentDefinition = envDefinitionName
 	}
 
