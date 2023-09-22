@@ -1,65 +1,99 @@
 package devcenter
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
+	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
+	"github.com/azure/azure-dev/cli/azd/pkg/environment"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
+	"golang.org/x/exp/slices"
 )
 
-func MergeConfigs(configs ...*Config) *Config {
-	if len(configs) == 0 {
-		panic("no configs provided")
-	}
-
-	destConfig := configs[0]
-
-	mergedConfig := &Config{
-		Name:                  destConfig.Name,
-		Catalog:               destConfig.Catalog,
-		Project:               destConfig.Project,
-		EnvironmentType:       destConfig.EnvironmentType,
-		EnvironmentDefinition: destConfig.EnvironmentDefinition,
-	}
-
-	for _, config := range configs[1:] {
-		if config == nil {
-			continue
-		}
-
-		if config.Name != "" && mergedConfig.Name == "" {
-			mergedConfig.Name = config.Name
-		}
-
-		if config.Catalog != "" && mergedConfig.Catalog == "" {
-			mergedConfig.Catalog = config.Catalog
-		}
-
-		if config.Project != "" && mergedConfig.Project == "" {
-			mergedConfig.Project = config.Project
-		}
-
-		if config.EnvironmentType != "" && mergedConfig.EnvironmentType == "" {
-			mergedConfig.EnvironmentType = config.EnvironmentType
-		}
-
-		if config.EnvironmentDefinition != "" && mergedConfig.EnvironmentDefinition == "" {
-			mergedConfig.EnvironmentDefinition = config.EnvironmentDefinition
-		}
-	}
-
-	return mergedConfig
+type Manager struct {
+	config               *Config
+	deploymentsService   azapi.Deployments
+	deploymentOperations azapi.DeploymentOperations
 }
 
-func ParseConfig(partialConfig any) (*Config, error) {
-	var config *Config
+func NewManager(config *Config, deploymentsService azapi.Deployments, deploymentOperations azapi.DeploymentOperations) *Manager {
+	return &Manager{
+		config:               config,
+		deploymentsService:   deploymentsService,
+		deploymentOperations: deploymentOperations,
+	}
+}
 
-	jsonBytes, err := json.Marshal(partialConfig)
+// getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
+// Right now this will retrieve the outputs from the latest azure deployment
+// Long term this will call into ADE Outputs API
+func (m *Manager) Outputs(ctx context.Context, env *devcentersdk.Environment) (map[string]provisioning.OutputParameter, error) {
+	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal devCenter configuration: %w", err)
+		return nil, fmt.Errorf("failed parsing resource group id: %w", err)
 	}
 
-	if err := json.Unmarshal(jsonBytes, &config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal devCenter configuration: %w", err)
+	scope := infra.NewResourceGroupScope(
+		m.deploymentsService,
+		m.deploymentOperations,
+		resourceGroupId.SubscriptionId,
+		resourceGroupId.Name,
+	)
+
+	deployments, err := scope.ListDeployments(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed listing deployments: %w", err)
 	}
 
-	return config, nil
+	slices.SortFunc(deployments, func(x, y *armresources.DeploymentExtended) bool {
+		return x.Properties.Timestamp.After(*y.Properties.Timestamp)
+	})
+
+	latestDeploymentIndex := slices.IndexFunc(deployments, func(d *armresources.DeploymentExtended) bool {
+		tagDevCenterName, devCenterOk := d.Tags[DeploymentTagDevCenterName]
+		tagProjectName, projectOk := d.Tags[DeploymentTagDevCenterProject]
+		tagEnvTypeName, envTypeOk := d.Tags[DeploymentTagEnvironmentType]
+		tagEnvName, envOk := d.Tags[DeploymentTagEnvironmentName]
+
+		if !devCenterOk || !projectOk || !envTypeOk || !envOk {
+			return false
+		}
+
+		if *tagDevCenterName == m.config.Name ||
+			*tagProjectName == m.config.Project ||
+			*tagEnvTypeName == m.config.EnvironmentType ||
+			*tagEnvName == env.Name {
+			return true
+		}
+
+		return false
+	})
+
+	if latestDeploymentIndex == -1 {
+		return nil, fmt.Errorf("failed to find latest deployment")
+	}
+
+	latestDeployment := deployments[latestDeploymentIndex]
+	outputs := createOutputParameters(azapi.CreateDeploymentOutput(latestDeployment.Properties.Outputs))
+
+	// Set up AZURE_SUBSCRIPTION_ID and AZURE_RESOURCE_GROUP environment variables
+	// These are required for azd deploy to work as expected
+	if _, exists := outputs[environment.SubscriptionIdEnvVarName]; !exists {
+		outputs[environment.SubscriptionIdEnvVarName] = provisioning.OutputParameter{
+			Type:  provisioning.ParameterTypeString,
+			Value: resourceGroupId.SubscriptionId,
+		}
+	}
+
+	if _, exists := outputs[environment.ResourceGroupEnvVarName]; !exists {
+		outputs[environment.ResourceGroupEnvVarName] = provisioning.OutputParameter{
+			Type:  provisioning.ParameterTypeString,
+			Value: resourceGroupId.Name,
+		}
+	}
+
+	return outputs, nil
 }

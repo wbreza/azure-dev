@@ -28,7 +28,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/httputil"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	infraBicep "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/bicep"
-	infraDevCenter "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/devcenter"
 	infraTerraform "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/terraform"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
@@ -260,6 +259,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// Remote Environment State Providers
 	remoteStateProviderMap := map[environment.RemoteKind]any{
 		environment.RemoteKindAzureBlobStorage: environment.NewStorageBlobDataStore,
+		devcenter.RemoteKindDevCenter:      devcenter.NewEnvironmentStore,
 	}
 
 	for remoteKind, constructor := range remoteStateProviderMap {
@@ -274,6 +274,21 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	) (*state.RemoteConfig, error) {
 		var remoteStateConfig *state.RemoteConfig
 
+		userConfig, err := userConfigManager.Load()
+		if err != nil {
+			return nil, fmt.Errorf("loading user config: %w", err)
+		}
+
+		// When devcenter is enabled in azd config, use devcenter as the remote state provider
+		// regardless of any other remote state configuration
+		if internal.IsDevCenterEnabled(userConfig) {
+			remoteStateConfig = &state.RemoteConfig{
+				Backend: string(devcenter.RemoteKindDevCenter),
+			}
+
+			return remoteStateConfig, nil
+		}
+
 		// The project config may not be available yet
 		// Ex) Within init phase of fingerprinting
 		projectConfig, _ := lazyProjectConfig.GetValue()
@@ -284,11 +299,6 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		if projectConfig != nil && projectConfig.State != nil && projectConfig.State.Remote != nil {
 			remoteStateConfig = projectConfig.State.Remote
 		} else {
-			userConfig, err := userConfigManager.Load()
-			if err != nil {
-				return nil, fmt.Errorf("loading user config: %w", err)
-			}
-
 			remoteState, ok := userConfig.Get("state.remote")
 			if ok {
 				jsonBytes, err := json.Marshal(remoteState)
@@ -405,8 +415,10 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 
 	// DevCenter Config
 	container.RegisterSingleton(func(
+		ctx context.Context,
+		azdCtx *azdcontext.AzdContext,
 		projectConfig *project.ProjectConfig,
-		env *environment.Environment,
+		localEnvStore environment.LocalDataStore,
 	) (*devcenter.Config, error) {
 		// Load deventer configuration in the following precedence:
 		// 1. Environment variables (AZURE_DEVCENTER_*)
@@ -422,14 +434,23 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		}
 
 		var environmentConfig *devcenter.Config
-		devCenterNode, exists := env.Config.Get("devCenter")
-		if exists {
-			value, err := devcenter.ParseConfig(devCenterNode)
-			if err != nil {
-				return nil, err
-			}
+		defaultEnvName, err := azdCtx.GetDefaultEnvironmentName()
+		if err != nil {
+			environmentConfig = &devcenter.Config{}
+		} else {
+			// Attempt to load any devcenter configuration from local environment
+			env, err := localEnvStore.Get(ctx, defaultEnvName)
+			if err == nil {
+				devCenterNode, exists := env.Config.Get("devCenter")
+				if exists {
+					value, err := devcenter.ParseConfig(devCenterNode)
+					if err != nil {
+						return nil, err
+					}
 
-			environmentConfig = value
+					environmentConfig = value
+				}
+			}
 		}
 
 		return devcenter.MergeConfigs(envVarConfig, environmentConfig, projectConfig.DevCenter), nil
@@ -512,13 +533,14 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterTransient(provisioning.NewManager)
 	container.RegisterSingleton(provisioning.NewPrincipalIdProvider)
 	container.RegisterSingleton(prompt.NewDefaultPrompter)
-	container.RegisterSingleton(infraDevCenter.NewPrompter)
+	container.RegisterSingleton(devcenter.NewManager)
+	container.RegisterSingleton(devcenter.NewPrompter)
 
 	// Provisioning Providers
 	provisionProviderMap := map[provisioning.ProviderKind]any{
 		provisioning.Bicep:     infraBicep.NewBicepProvider,
 		provisioning.Terraform: infraTerraform.NewTerraformProvider,
-		provisioning.DevCenter: infraDevCenter.NewDevCenterProvider,
+		provisioning.DevCenter: devcenter.NewDevCenterProvider,
 	}
 
 	for provider, constructor := range provisionProviderMap {

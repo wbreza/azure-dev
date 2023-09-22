@@ -5,16 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
-	"github.com/azure/azure-dev/cli/azd/pkg/devcenter"
 	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
-	"github.com/azure/azure-dev/cli/azd/pkg/infra"
-	. "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
-	"golang.org/x/exp/slices"
 )
 
 const (
@@ -26,48 +22,45 @@ const (
 	DeploymentTagEnvironmentName  = "AdeEnvironmentName"
 )
 
-type DevCenterProvider struct {
-	console              input.Console
-	env                  *environment.Environment
-	envManager           environment.Manager
-	config               *devcenter.Config
-	devCenterClient      devcentersdk.DevCenterClient
-	deploymentsService   azapi.Deployments
-	deploymentOperations azapi.DeploymentOperations
-	prompter             *Prompter
+type ProvisionProvider struct {
+	console         input.Console
+	env             *environment.Environment
+	envManager      environment.Manager
+	config          *Config
+	devCenterClient devcentersdk.DevCenterClient
+	manager         *Manager
+	prompter        *Prompter
 }
 
 func NewDevCenterProvider(
 	console input.Console,
 	env *environment.Environment,
 	envManager environment.Manager,
-	config *devcenter.Config,
+	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
-	deploymentsService azapi.Deployments,
-	deploymentOperations azapi.DeploymentOperations,
+	manager *Manager,
 	prompter *Prompter,
-) Provider {
-	return &DevCenterProvider{
-		console:              console,
-		env:                  env,
-		envManager:           envManager,
-		config:               config,
-		devCenterClient:      devCenterClient,
-		deploymentsService:   deploymentsService,
-		deploymentOperations: deploymentOperations,
-		prompter:             prompter,
+) provisioning.Provider {
+	return &ProvisionProvider{
+		console:         console,
+		env:             env,
+		envManager:      envManager,
+		config:          config,
+		devCenterClient: devCenterClient,
+		manager:         manager,
+		prompter:        prompter,
 	}
 }
 
-func (p *DevCenterProvider) Name() string {
+func (p *ProvisionProvider) Name() string {
 	return "Dev Center"
 }
 
-func (p *DevCenterProvider) Initialize(ctx context.Context, projectPath string, options Options) error {
+func (p *ProvisionProvider) Initialize(ctx context.Context, projectPath string, options provisioning.Options) error {
 	return p.EnsureEnv(ctx)
 }
 
-func (p *DevCenterProvider) State(ctx context.Context, options *StateOptions) (*StateResult, error) {
+func (p *ProvisionProvider) State(ctx context.Context, options *provisioning.StateOptions) (*provisioning.StateResult, error) {
 	if !p.config.IsValid() {
 		return nil, fmt.Errorf("invalid devcenter configuration")
 	}
@@ -83,19 +76,19 @@ func (p *DevCenterProvider) State(ctx context.Context, options *StateOptions) (*
 		return nil, fmt.Errorf("failed getting environment: %w", err)
 	}
 
-	outputs, err := p.getEnvironmentOutputs(ctx, environment)
+	outputs, err := p.manager.Outputs(ctx, environment)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting environment outputs: %w", err)
 	}
 
-	return &StateResult{
-		State: &State{
+	return &provisioning.StateResult{
+		State: &provisioning.State{
 			Outputs: outputs,
 		},
 	}, nil
 }
 
-func (p *DevCenterProvider) Deploy(ctx context.Context) (*DeployResult, error) {
+func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployResult, error) {
 	if !p.config.IsValid() {
 		return nil, fmt.Errorf("invalid devcenter configuration")
 	}
@@ -168,13 +161,13 @@ func (p *DevCenterProvider) Deploy(ctx context.Context) (*DeployResult, error) {
 		return nil, fmt.Errorf("failed getting environment: %w", err)
 	}
 
-	outputs, err := p.getEnvironmentOutputs(ctx, environment)
+	outputs, err := p.manager.Outputs(ctx, environment)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting environment outputs: %w", err)
 	}
 
-	result := &DeployResult{
-		Deployment: &Deployment{
+	result := &provisioning.DeployResult{
+		Deployment: &provisioning.Deployment{
 			Parameters: createInputParameters(envDef, paramValues),
 			Outputs:    outputs,
 		},
@@ -183,11 +176,11 @@ func (p *DevCenterProvider) Deploy(ctx context.Context) (*DeployResult, error) {
 	return result, nil
 }
 
-func (p *DevCenterProvider) Preview(ctx context.Context) (*DeployPreviewResult, error) {
+func (p *ProvisionProvider) Preview(ctx context.Context) (*provisioning.DeployPreviewResult, error) {
 	return nil, fmt.Errorf("preview is not supported for devcenter")
 }
 
-func (p *DevCenterProvider) Destroy(ctx context.Context, options DestroyOptions) (*DestroyResult, error) {
+func (p *ProvisionProvider) Destroy(ctx context.Context, options provisioning.DestroyOptions) (*provisioning.DestroyResult, error) {
 	if !p.config.IsValid() {
 		return nil, fmt.Errorf("invalid devcenter configuration")
 	}
@@ -251,14 +244,14 @@ func (p *DevCenterProvider) Destroy(ctx context.Context, options DestroyOptions)
 
 	p.console.StopSpinner(ctx, spinnerMessage, input.StepDone)
 
-	result := &DestroyResult{}
+	result := &provisioning.DestroyResult{}
 
 	return result, nil
 }
 
 // EnsureEnv ensures that the environment is configured for the Dev Center provider.
 // Require selection for devcenter, project, catalog, environment type, and environment definition
-func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
+func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
 	devCenterName := p.config.Name
 	var err error
 
@@ -268,7 +261,7 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 			return err
 		}
 		p.config.Name = devCenterName
-		if err := p.env.Config.Set(devcenter.DevCenterNamePath, devCenterName); err != nil {
+		if err := p.env.Config.Set(DevCenterNamePath, devCenterName); err != nil {
 			return err
 		}
 	}
@@ -280,7 +273,7 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 			return err
 		}
 		p.config.Project = projectName
-		if err := p.env.Config.Set(devcenter.DevCenterProjectPath, projectName); err != nil {
+		if err := p.env.Config.Set(DevCenterProjectPath, projectName); err != nil {
 			return err
 		}
 	}
@@ -292,7 +285,7 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 			return err
 		}
 		p.config.Catalog = catalogName
-		if err := p.env.Config.Set(devcenter.DevCenterCatalogPath, catalogName); err != nil {
+		if err := p.env.Config.Set(DevCenterCatalogPath, catalogName); err != nil {
 			return err
 		}
 	}
@@ -304,7 +297,7 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 			return err
 		}
 		p.config.EnvironmentType = envTypeName
-		if err := p.env.Config.Set(devcenter.DevCenterEnvTypePath, envTypeName); err != nil {
+		if err := p.env.Config.Set(DevCenterEnvTypePath, envTypeName); err != nil {
 			return err
 		}
 	}
@@ -316,7 +309,7 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 			return err
 		}
 		p.config.EnvironmentDefinition = envDefinitionName
-		if err := p.env.Config.Set(devcenter.DevCenterEnvDefinitionPath, envDefinitionName); err != nil {
+		if err := p.env.Config.Set(DevCenterEnvDefinitionPath, envDefinitionName); err != nil {
 			return err
 		}
 	}
@@ -324,92 +317,18 @@ func (p *DevCenterProvider) EnsureEnv(ctx context.Context) error {
 	return nil
 }
 
-// getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
-// Right now this will retrieve the outputs from the latest azure deployment
-// Long term this will call into ADE Outputs API
-func (p *DevCenterProvider) getEnvironmentOutputs(
-	ctx context.Context,
-	env *devcentersdk.Environment,
-) (map[string]OutputParameter, error) {
-	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
-	if err != nil {
-		return nil, fmt.Errorf("failed parsing resource group id: %w", err)
-	}
-
-	scope := infra.NewResourceGroupScope(
-		p.deploymentsService,
-		p.deploymentOperations,
-		resourceGroupId.SubscriptionId,
-		resourceGroupId.Name,
-	)
-
-	deployments, err := scope.ListDeployments(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed listing deployments: %w", err)
-	}
-
-	slices.SortFunc(deployments, func(x, y *armresources.DeploymentExtended) bool {
-		return x.Properties.Timestamp.After(*y.Properties.Timestamp)
-	})
-
-	latestDeploymentIndex := slices.IndexFunc(deployments, func(d *armresources.DeploymentExtended) bool {
-		tagDevCenterName, devCenterOk := d.Tags[DeploymentTagDevCenterName]
-		tagProjectName, projectOk := d.Tags[DeploymentTagDevCenterProject]
-		tagEnvTypeName, envTypeOk := d.Tags[DeploymentTagEnvironmentType]
-		tagEnvName, envOk := d.Tags[DeploymentTagEnvironmentName]
-
-		if !devCenterOk || !projectOk || !envTypeOk || !envOk {
-			return false
-		}
-
-		if *tagDevCenterName == p.config.Name ||
-			*tagProjectName == p.config.Project ||
-			*tagEnvTypeName == p.config.EnvironmentType ||
-			*tagEnvName == env.Name {
-			return true
-		}
-
-		return false
-	})
-
-	if latestDeploymentIndex == -1 {
-		return nil, fmt.Errorf("failed to find latest deployment")
-	}
-
-	latestDeployment := deployments[latestDeploymentIndex]
-	outputs := createOutputParameters(azapi.CreateDeploymentOutput(latestDeployment.Properties.Outputs))
-
-	// Set up AZURE_SUBSCRIPTION_ID and AZURE_RESOURCE_GROUP environment variables
-	// These are required for azd deploy to work as expected
-	if _, exists := outputs[environment.SubscriptionIdEnvVarName]; !exists {
-		outputs[environment.SubscriptionIdEnvVarName] = OutputParameter{
-			Type:  ParameterTypeString,
-			Value: resourceGroupId.SubscriptionId,
-		}
-	}
-
-	if _, exists := outputs[environment.ResourceGroupEnvVarName]; !exists {
-		outputs[environment.ResourceGroupEnvVarName] = OutputParameter{
-			Type:  ParameterTypeString,
-			Value: resourceGroupId.Name,
-		}
-	}
-
-	return outputs, nil
-}
-
-func mapBicepTypeToInterfaceType(s string) ParameterType {
+func mapBicepTypeToInterfaceType(s string) provisioning.ParameterType {
 	switch s {
 	case "String", "string", "secureString", "securestring":
-		return ParameterTypeString
+		return provisioning.ParameterTypeString
 	case "Bool", "bool":
-		return ParameterTypeBoolean
+		return provisioning.ParameterTypeBoolean
 	case "Int", "int":
-		return ParameterTypeNumber
+		return provisioning.ParameterTypeNumber
 	case "Object", "object", "secureObject", "secureobject":
-		return ParameterTypeObject
+		return provisioning.ParameterTypeObject
 	case "Array", "array":
-		return ParameterTypeArray
+		return provisioning.ParameterTypeArray
 	default:
 		panic(fmt.Sprintf("unexpected bicep type: '%s'", s))
 	}
@@ -417,8 +336,8 @@ func mapBicepTypeToInterfaceType(s string) ParameterType {
 
 // Creates a normalized view of the azure output parameters and resolves inconsistencies in the output parameter name
 // casings.
-func createOutputParameters(deploymentOutputs map[string]azapi.AzCliDeploymentOutput) map[string]OutputParameter {
-	outputParams := map[string]OutputParameter{}
+func createOutputParameters(deploymentOutputs map[string]azapi.AzCliDeploymentOutput) map[string]provisioning.OutputParameter {
+	outputParams := map[string]provisioning.OutputParameter{}
 
 	for key, azureParam := range deploymentOutputs {
 		// To support BYOI (bring your own infrastructure) scenarios we will default to UPPER when canonical casing
@@ -426,7 +345,7 @@ func createOutputParameters(deploymentOutputs map[string]azapi.AzCliDeploymentOu
 		// like `azurE_RESOURCE_GROUP`
 		paramName := strings.ToUpper(key)
 
-		outputParams[paramName] = OutputParameter{
+		outputParams[paramName] = provisioning.OutputParameter{
 			Type:  mapBicepTypeToInterfaceType(azureParam.Type),
 			Value: azureParam.Value,
 		}
@@ -438,11 +357,11 @@ func createOutputParameters(deploymentOutputs map[string]azapi.AzCliDeploymentOu
 func createInputParameters(
 	environmentDefinition *devcentersdk.EnvironmentDefinition,
 	parameterValues map[string]any,
-) map[string]InputParameter {
-	inputParams := map[string]InputParameter{}
+) map[string]provisioning.InputParameter {
+	inputParams := map[string]provisioning.InputParameter{}
 
 	for _, param := range environmentDefinition.Parameters {
-		inputParams[param.Name] = InputParameter{
+		inputParams[param.Name] = provisioning.InputParameter{
 			Type:         string(param.Type),
 			DefaultValue: param.Default,
 			Value:        parameterValues[param.Name],

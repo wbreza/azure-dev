@@ -4,6 +4,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	// Importing for infrastructure provider plugin registrations
 
+	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
 
 	"github.com/azure/azure-dev/cli/azd/internal"
@@ -313,6 +315,16 @@ func NewRootCmd(staticHelp bool, middlewareChain []*actions.MiddlewareRegistrati
 
 	// Compose the hierarchy of action descriptions into cobra commands
 	cmd, err := cobraBuilder.BuildCommand(root)
+
+	console := input.NewConsole(false, true, os.Stdout, input.ConsoleHandles{
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}, &output.NoneFormatter{})
+	_, _ = console.Confirm(context.Background(), input.ConsoleOptions{
+		Message:      fmt.Sprintf("Debugger Ready? (pid: %d)", os.Getpid()),
+		DefaultValue: true,
+	})
 
 	if err != nil {
 		// If their is a container registration issue or similar we'll get an error at this point
