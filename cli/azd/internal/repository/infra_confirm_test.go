@@ -13,8 +13,6 @@ import (
 )
 
 func TestInitializer_infraSpecFromDetect(t *testing.T) {
-	t.Skip()
-
 	tests := []struct {
 		name         string
 		detect       detectConfirm
