@@ -445,7 +445,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			// Attempt to load any devcenter configuration from local environment
 			env, err := localEnvStore.Get(ctx, defaultEnvName)
 			if err == nil {
-				devCenterNode, exists := env.Config.Get("devCenter")
+				devCenterNode, exists := env.Config.Get(devcenter.ConfigPath)
 				if exists {
 					value, err := devcenter.ParseConfig(devCenterNode)
 					if err != nil {
@@ -463,7 +463,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		if err != nil {
 			userConfig = &devcenter.Config{}
 		} else {
-			devCenterNode, exists := azdConfig.Get("devCenter")
+			devCenterNode, exists := azdConfig.Get(devcenter.ConfigPath)
 			if exists {
 				value, err := devcenter.ParseConfig(devCenterNode)
 				if err != nil {

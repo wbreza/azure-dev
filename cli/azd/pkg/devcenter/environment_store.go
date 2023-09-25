@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	ConfigPath                                 = "devCenter"
 	RemoteKindDevCenter environment.RemoteKind = "devcenter"
 )
 

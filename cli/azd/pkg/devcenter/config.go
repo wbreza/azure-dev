@@ -1,5 +1,7 @@
 package devcenter
 
+import "fmt"
+
 const (
 	// Environment variable names
 	DevCenterNameEnvName          = "AZURE_DEVCENTER_NAME"
@@ -7,13 +9,15 @@ const (
 	DevCenterProjectEnvName       = "AZURE_DEVCENTER_PROJECT"
 	DevCenterEnvTypeEnvName       = "AZURE_DEVCENTER_ENVIRONMENT_TYPE"
 	DevCenterEnvDefinitionEnvName = "AZURE_DEVCENTER_ENVIRONMENT_DEFINITION"
+)
 
+var (
 	// Environment configuration paths
-	DevCenterNamePath          = "devCenter.name"
-	DevCenterCatalogPath       = "devCenter.catalog"
-	DevCenterProjectPath       = "devCenter.project"
-	DevCenterEnvTypePath       = "devCenter.environmentType"
-	DevCenterEnvDefinitionPath = "devCenter.environmentDefinition"
+	DevCenterNamePath          = fmt.Sprintf("%s.name", ConfigPath)
+	DevCenterCatalogPath       = fmt.Sprintf("%s.catalog", ConfigPath)
+	DevCenterProjectPath       = fmt.Sprintf("%s.project", ConfigPath)
+	DevCenterEnvTypePath       = fmt.Sprintf("%s.environmentType", ConfigPath)
+	DevCenterEnvDefinitionPath = fmt.Sprintf("%s.environmentDefinition", ConfigPath)
 )
 
 // Config provides the Azure DevCenter configuration used for devcenter enabled projects

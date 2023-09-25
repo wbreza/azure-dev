@@ -100,11 +100,11 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 							// Metadata will be used when creating any azd environments that are based on this template
 							Metadata: templates.Metadata{
 								Project: map[string]string{
-									"devCenter.name":                  project.DevCenter.Name,
-									"devCenter.project":               project.Name,
-									"devCenter.catalog":               envDefinition.CatalogName,
-									"devCenter.environmentDefinition": envDefinition.Name,
-									"devCenter.repoUrl":               url,
+									fmt.Sprintf("%s.name", ConfigPath):                  project.DevCenter.Name,
+									fmt.Sprintf("%s.project", ConfigPath):               project.Name,
+									fmt.Sprintf("%s.catalog", ConfigPath):               envDefinition.CatalogName,
+									fmt.Sprintf("%s.environmentDefinition", ConfigPath): envDefinition.Name,
+									fmt.Sprintf("%s.repoUrl", ConfigPath):               url,
 								},
 							},
 						}
