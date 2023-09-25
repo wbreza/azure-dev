@@ -29,12 +29,6 @@ var (
 		Location: "https://aka.ms/awesome-azd/templates.json",
 	}
 
-	SourceDevCenter = &SourceConfig{
-		Key:  "devcenter",
-		Name: "Dev Center",
-		Type: SourceKindDevCenter,
-	}
-
 	WellKnownSources = map[string]*SourceConfig{
 		SourceDefault.Key:    SourceDefault,
 		SourceAwesomeAzd.Key: SourceAwesomeAzd,
@@ -60,6 +54,7 @@ type SourceManager interface {
 }
 
 type sourceManager struct {
+	defaultSources []*SourceConfig
 	serviceLocator ioc.ServiceLocator
 	configManager  config.UserConfigManager
 	httpClient     httputil.HttpClient
@@ -68,10 +63,12 @@ type sourceManager struct {
 // NewSourceManager creates a new SourceManager.
 func NewSourceManager(
 	serviceLocator ioc.ServiceLocator,
+	defaultSources []*SourceConfig,
 	configManager config.UserConfigManager,
 	httpClient httputil.HttpClient,
 ) SourceManager {
 	return &sourceManager{
+		defaultSources: defaultSources,
 		serviceLocator: serviceLocator,
 		configManager:  configManager,
 		httpClient:     httpClient,
@@ -85,10 +82,10 @@ func (sm *sourceManager) List(ctx context.Context) ([]*SourceConfig, error) {
 		return nil, fmt.Errorf("unable to load user configuration: %w", err)
 	}
 
-	sourceConfigs := []*SourceConfig{}
+	allSourceConfigs := []*SourceConfig{}
 
-	if sm.isDevCenterEnabled(config) {
-		sourceConfigs = append(sourceConfigs, SourceDevCenter)
+	if len(sm.defaultSources) > 0 {
+		allSourceConfigs = append(allSourceConfigs, sm.defaultSources...)
 	}
 
 	rawSources, ok := config.Get(baseConfigKey)
@@ -112,7 +109,7 @@ func (sm *sourceManager) List(ctx context.Context) ([]*SourceConfig, error) {
 			}
 
 			sourceConfig.Key = key
-			sourceConfigs = append(sourceConfigs, sourceConfig)
+			allSourceConfigs = append(allSourceConfigs, sourceConfig)
 		}
 	} else {
 		// In the use case where template sources have never been configured,
@@ -120,10 +117,10 @@ func (sm *sourceManager) List(ctx context.Context) ([]*SourceConfig, error) {
 		if err := sm.addInternal(ctx, SourceAwesomeAzd.Key, SourceAwesomeAzd); err != nil {
 			return nil, fmt.Errorf("unable to default template source '%s': %w", SourceAwesomeAzd.Key, err)
 		}
-		sourceConfigs = append(sourceConfigs, SourceAwesomeAzd)
+		allSourceConfigs = append(allSourceConfigs, SourceAwesomeAzd)
 	}
 
-	return sourceConfigs, nil
+	return allSourceConfigs, nil
 }
 
 // Get returns a template source by key.
@@ -239,20 +236,6 @@ func (sm *sourceManager) addInternal(ctx context.Context, key string, source *So
 	}
 
 	return nil
-}
-
-func (sm *sourceManager) isDevCenterEnabled(config config.Config) bool {
-	devCenterNode, ok := config.Get("devCenter.mode")
-	if !ok {
-		return false
-	}
-
-	devCenterValue, ok := devCenterNode.(string)
-	if !ok {
-		return false
-	}
-
-	return devCenterValue == "on"
 }
 
 func normalizeKey(key string) string {

@@ -16,6 +16,12 @@ const (
 	SourceKindDevCenter templates.SourceKind = "devcenter"
 )
 
+var SourceDevCenter = &templates.SourceConfig{
+	Key:  "devcenter",
+	Name: "Dev Center",
+	Type: SourceKindDevCenter,
+}
+
 type TemplateSource struct {
 	devCenterClient devcentersdk.DevCenterClient
 }

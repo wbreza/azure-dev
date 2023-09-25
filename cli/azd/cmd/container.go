@@ -281,7 +281,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 
 		// When devcenter is enabled in azd config, use devcenter as the remote state provider
 		// regardless of any other remote state configuration
-		if internal.IsDevCenterEnabled(userConfig) {
+		if devcenter.IsEnabled(userConfig) {
 			remoteStateConfig = &state.RemoteConfig{
 				Backend: string(devcenter.RemoteKindDevCenter),
 			}
@@ -495,6 +495,23 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	})
 
 	// Templates
+
+	// Gets a list of default template sources used in azd.
+	container.RegisterSingleton(func(configManager config.UserConfigManager) ([]*templates.SourceConfig, error) {
+		defaultSources := []*templates.SourceConfig{}
+		config, err := configManager.Load()
+		if err != nil {
+			return nil, err
+		}
+
+		// When devcenter is enabled, consider devcenter source as default source
+		if devcenter.IsEnabled(config) {
+			defaultSources = append(defaultSources, devcenter.SourceDevCenter)
+		}
+
+		return defaultSources, nil
+	})
+
 	container.RegisterSingleton(templates.NewTemplateManager)
 	container.RegisterSingleton(templates.NewSourceManager)
 
@@ -586,6 +603,23 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			panic(fmt.Errorf("registering IaC provider %s: %w", provider, err))
 		}
 	}
+
+	// Function to determine the default IaC provider when provisioning
+	container.RegisterSingleton(func(configManager config.UserConfigManager) provisioning.DefaultProviderResolver {
+		return func() (provisioning.ProviderKind, error) {
+			config, err := configManager.Load()
+			if err != nil {
+				return provisioning.NotSpecified, err
+			}
+
+			// DevCenter provider is default when enabled
+			if devcenter.IsEnabled(config) {
+				return provisioning.DevCenter, nil
+			}
+
+			return provisioning.Bicep, nil
+		}
+	})
 
 	// Other
 	container.RegisterSingleton(createClock)

@@ -26,6 +26,7 @@ func Test_Templates_NewTemplateManager(t *testing.T) {
 	templateManager, err := NewTemplateManager(
 		NewSourceManager(
 			mockContext.Container,
+			[]*SourceConfig{},
 			config.NewUserConfigManager(config.NewFileConfigManager(config.NewManager())),
 			mockContext.HttpClient,
 		),
@@ -42,7 +43,7 @@ func Test_Templates_ListTemplates(t *testing.T) {
 	configManager.On("Load").Return(config.NewConfig(defaultTemplateSourceData), nil)
 
 	templateManager, err := NewTemplateManager(
-		NewSourceManager(mockContext.Container, configManager, mockContext.HttpClient),
+		NewSourceManager(mockContext.Container, []*SourceConfig{}, configManager, mockContext.HttpClient),
 	)
 	require.NoError(t, err)
 
@@ -81,7 +82,7 @@ func Test_Templates_ListTemplates_SourceError(t *testing.T) {
 	configManager.On("Load").Return(config, nil)
 
 	templateManager, err := NewTemplateManager(
-		NewSourceManager(mockContext.Container, configManager, mockContext.HttpClient),
+		NewSourceManager(mockContext.Container, []*SourceConfig{}, configManager, mockContext.HttpClient),
 	)
 	require.NoError(t, err)
 
@@ -98,7 +99,7 @@ func Test_Templates_GetTemplate_WithValidPath(t *testing.T) {
 	configManager.On("Load").Return(config.NewConfig(defaultTemplateSourceData), nil)
 
 	templateManager, err := NewTemplateManager(
-		NewSourceManager(mockContext.Container, configManager, mockContext.HttpClient),
+		NewSourceManager(mockContext.Container, []*SourceConfig{}, configManager, mockContext.HttpClient),
 	)
 	require.NoError(t, err)
 
@@ -119,7 +120,7 @@ func Test_Templates_GetTemplate_WithInvalidPath(t *testing.T) {
 	configManager.On("Load").Return(config.NewConfig(defaultTemplateSourceData), nil)
 
 	templateManager, err := NewTemplateManager(
-		NewSourceManager(mockContext.Container, configManager, mockContext.HttpClient),
+		NewSourceManager(mockContext.Container, []*SourceConfig{}, configManager, mockContext.HttpClient),
 	)
 	require.NoError(t, err)
 
@@ -136,7 +137,7 @@ func Test_Templates_GetTemplate_WithNotFoundPath(t *testing.T) {
 	configManager.On("Load").Return(config.NewConfig(defaultTemplateSourceData), nil)
 
 	templateManager, err := NewTemplateManager(
-		NewSourceManager(mockContext.Container, configManager, mockContext.HttpClient),
+		NewSourceManager(mockContext.Container, []*SourceConfig{}, configManager, mockContext.HttpClient),
 	)
 	require.NoError(t, err)
 

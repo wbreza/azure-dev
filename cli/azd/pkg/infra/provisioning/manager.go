@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/pkg/alpha"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
@@ -18,9 +17,12 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
 )
 
+type DefaultProviderResolver func() (ProviderKind, error)
+
 // Manages the orchestration of infrastructure provisioning
 type Manager struct {
 	serviceLocator      ioc.ServiceLocator
+	defaultProvider     DefaultProviderResolver
 	envManager          environment.Manager
 	env                 *environment.Environment
 	console             input.Console
@@ -211,6 +213,7 @@ func EnsureSubscriptionAndLocation(
 // Creates a new instance of the Provisioning Manager
 func NewManager(
 	serviceLocator ioc.ServiceLocator,
+	defaultProvider DefaultProviderResolver,
 	envManager environment.Manager,
 	env *environment.Environment,
 	console input.Console,
@@ -219,6 +222,7 @@ func NewManager(
 ) *Manager {
 	return &Manager{
 		serviceLocator:      serviceLocator,
+		defaultProvider:     defaultProvider,
 		envManager:          envManager,
 		env:                 env,
 		console:             console,
@@ -247,7 +251,7 @@ func (m *Manager) newProvider(ctx context.Context) (Provider, error) {
 
 	providerKey := m.options.Provider
 	if providerKey == NotSpecified {
-		defaultProvider, err := m.getDefaultProvider()
+		defaultProvider, err := m.defaultProvider()
 		if err != nil {
 			return nil, err
 		}
@@ -262,20 +266,4 @@ func (m *Manager) newProvider(ctx context.Context) (Provider, error) {
 	}
 
 	return provider, nil
-}
-
-// When in DevCenter mode we default to using the DevCenter provider
-// Otherwise we default to using the Bicep provider
-func (m *Manager) getDefaultProvider() (ProviderKind, error) {
-	config, err := m.configManager.Load()
-	if err != nil {
-		return NotSpecified, nil
-	}
-
-	devCenterEnabled := internal.IsDevCenterEnabled(config)
-	if devCenterEnabled {
-		return DevCenter, nil
-	}
-
-	return Bicep, nil
 }
