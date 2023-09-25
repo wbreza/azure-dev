@@ -1,17 +1,21 @@
 package internal
 
-import "github.com/azure/azure-dev/cli/azd/pkg/config"
+import (
+	"strings"
+
+	"github.com/azure/azure-dev/cli/azd/pkg/config"
+)
 
 func IsDevCenterEnabled(config config.Config) bool {
-	devCenterNode, ok := config.Get("devcenter")
+	devCenterModeNode, ok := config.Get("devCenter.mode")
 	if !ok {
 		return false
 	}
 
-	devCenterValue, ok := devCenterNode.(string)
+	devCenterValue, ok := devCenterModeNode.(string)
 	if !ok {
 		return false
 	}
 
-	return devCenterValue == "on"
+	return strings.EqualFold(devCenterValue, "on")
 }

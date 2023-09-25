@@ -242,7 +242,7 @@ func (sm *sourceManager) addInternal(ctx context.Context, key string, source *So
 }
 
 func (sm *sourceManager) isDevCenterEnabled(config config.Config) bool {
-	devCenterNode, ok := config.Get("devcenter")
+	devCenterNode, ok := config.Get("devCenter.mode")
 	if !ok {
 		return false
 	}
