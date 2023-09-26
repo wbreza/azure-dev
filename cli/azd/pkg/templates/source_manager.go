@@ -39,6 +39,22 @@ var (
 	ErrSourceTypeInvalid = errors.New("invalid template source type")
 )
 
+// SourceOptions defines options for the SourceManager.
+type SourceOptions struct {
+	// List of default template sources to use for listing templates
+	DefaultSources []*SourceConfig
+	// Whether to load template sources from azd configuration
+	LoadConfiguredSources bool
+}
+
+// NewSourceOptions creates a new SourceOptions with default values
+func NewSourceOptions() *SourceOptions {
+	return &SourceOptions{
+		DefaultSources:        []*SourceConfig{},
+		LoadConfiguredSources: true,
+	}
+}
+
 // SourceManager manages template sources used in azd template list and azd init experiences.
 type SourceManager interface {
 	// List returns a list of template sources.
@@ -54,7 +70,7 @@ type SourceManager interface {
 }
 
 type sourceManager struct {
-	defaultSources []*SourceConfig
+	options        *SourceOptions
 	serviceLocator ioc.ServiceLocator
 	configManager  config.UserConfigManager
 	httpClient     httputil.HttpClient
@@ -62,13 +78,17 @@ type sourceManager struct {
 
 // NewSourceManager creates a new SourceManager.
 func NewSourceManager(
+	options *SourceOptions,
 	serviceLocator ioc.ServiceLocator,
-	defaultSources []*SourceConfig,
 	configManager config.UserConfigManager,
 	httpClient httputil.HttpClient,
 ) SourceManager {
+	if options == nil {
+		options = NewSourceOptions()
+	}
+
 	return &sourceManager{
-		defaultSources: defaultSources,
+		options:        options,
 		serviceLocator: serviceLocator,
 		configManager:  configManager,
 		httpClient:     httpClient,
@@ -84,8 +104,12 @@ func (sm *sourceManager) List(ctx context.Context) ([]*SourceConfig, error) {
 
 	allSourceConfigs := []*SourceConfig{}
 
-	if len(sm.defaultSources) > 0 {
-		allSourceConfigs = append(allSourceConfigs, sm.defaultSources...)
+	if sm.options.DefaultSources != nil && len(sm.options.DefaultSources) > 0 {
+		allSourceConfigs = append(allSourceConfigs, sm.options.DefaultSources...)
+	}
+
+	if !sm.options.LoadConfiguredSources {
+		return allSourceConfigs, nil
 	}
 
 	rawSources, ok := config.Get(baseConfigKey)

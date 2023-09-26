@@ -71,7 +71,6 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 				var repoUrls []string
 				containsRepoUrl := slices.ContainsFunc(envDefinition.Parameters, func(p devcentersdk.Parameter) bool {
 					if strings.EqualFold(p.Name, "repourl") {
-
 						// Repo url parameter can support multiple values
 						// Values can either have a default or multiple allowed values but not both
 						if p.Default != nil {
@@ -88,7 +87,6 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 				if containsRepoUrl {
 					definitionParts := []string{
 						project.DevCenter.Name,
-						project.Name,
 						envDefinition.CatalogName,
 						envDefinition.Name,
 					}
@@ -97,9 +95,9 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 					// List an available AZD template for each repo url that is referenced in the template
 					for _, url := range repoUrls {
 						templatesChan <- &templates.Template{
-							Id:             definitionPath,
-							Name:           fmt.Sprintf("%s (%s)", envDefinition.Name, project.Name),
-							Source:         fmt.Sprintf("%s/%s/%s", project.DevCenter.Name, project.Name, envDefinition.CatalogName),
+							Id:             url + definitionPath,
+							Name:           envDefinition.Name,
+							Source:         fmt.Sprintf("%s/%s", project.DevCenter.Name, envDefinition.CatalogName),
 							Description:    envDefinition.Description,
 							RepositoryPath: url,
 
@@ -107,7 +105,6 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 							Metadata: templates.Metadata{
 								Project: map[string]string{
 									fmt.Sprintf("%s.name", ConfigPath):                  project.DevCenter.Name,
-									fmt.Sprintf("%s.project", ConfigPath):               project.Name,
 									fmt.Sprintf("%s.catalog", ConfigPath):               envDefinition.CatalogName,
 									fmt.Sprintf("%s.environmentDefinition", ConfigPath): envDefinition.Name,
 									fmt.Sprintf("%s.repoUrl", ConfigPath):               url,
@@ -126,9 +123,15 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 		close(errorsChan)
 	}()
 
-	templates := []*templates.Template{}
+	distinctTemplates := []*templates.Template{}
 	for template := range templatesChan {
-		templates = append(templates, template)
+		contains := slices.ContainsFunc(distinctTemplates, func(t *templates.Template) bool {
+			return t.Id == template.Id
+		})
+
+		if !contains {
+			distinctTemplates = append(distinctTemplates, template)
+		}
 	}
 
 	var allErrors error
@@ -140,7 +143,7 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 		return nil, allErrors
 	}
 
-	return templates, nil
+	return distinctTemplates, nil
 }
 
 func (s *TemplateSource) GetTemplate(ctx context.Context, path string) (*templates.Template, error) {

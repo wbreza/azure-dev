@@ -497,19 +497,25 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// Templates
 
 	// Gets a list of default template sources used in azd.
-	container.RegisterSingleton(func(configManager config.UserConfigManager) ([]*templates.SourceConfig, error) {
-		defaultSources := []*templates.SourceConfig{}
+	container.RegisterSingleton(func(configManager config.UserConfigManager) (*templates.SourceOptions, error) {
+		options := &templates.SourceOptions{
+			DefaultSources:        []*templates.SourceConfig{},
+			LoadConfiguredSources: true,
+		}
+
 		config, err := configManager.Load()
 		if err != nil {
 			return nil, err
 		}
 
 		// When devcenter is enabled, consider devcenter source as default source
+		// And don't load any other configured sources
 		if devcenter.IsEnabled(config) {
-			defaultSources = append(defaultSources, devcenter.SourceDevCenter)
+			options.DefaultSources = []*templates.SourceConfig{devcenter.SourceDevCenter}
+			options.LoadConfiguredSources = false
 		}
 
-		return defaultSources, nil
+		return options, nil
 	})
 
 	container.RegisterSingleton(templates.NewTemplateManager)
