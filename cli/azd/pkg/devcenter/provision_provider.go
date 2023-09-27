@@ -303,11 +303,11 @@ func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
 
 	envTypeName := p.config.EnvironmentType
 	if envTypeName == "" {
-		envTypeName, err = p.prompter.PromptEnvironmentType(ctx, updatedConfig.Name, updatedConfig.Project)
+		envType, err := p.prompter.PromptEnvironmentType(ctx, updatedConfig.Name, updatedConfig.Project)
 		if err != nil {
 			return err
 		}
-		p.config.EnvironmentType = envTypeName
+		p.config.EnvironmentType = envType.Name
 	}
 
 	if currentConfig.Name == "" {

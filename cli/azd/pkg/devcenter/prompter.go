@@ -18,7 +18,12 @@ type Prompter struct {
 	devCenterClient devcentersdk.DevCenterClient
 }
 
-func NewPrompter(config *Config, console input.Console, manager *Manager, devCenterClient devcentersdk.DevCenterClient) *Prompter {
+func NewPrompter(
+	config *Config,
+	console input.Console,
+	manager *Manager,
+	devCenterClient devcentersdk.DevCenterClient,
+) *Prompter {
 	return &Prompter{
 		config:          config,
 		console:         console,
@@ -29,23 +34,23 @@ func NewPrompter(config *Config, console input.Console, manager *Manager, devCen
 
 func (p *Prompter) PromptForValues(ctx context.Context) (*Config, error) {
 	devCenterName := p.config.Name
-	var err error
-
 	if devCenterName == "" {
-		devCenterName, err = p.PromptDevCenter(ctx)
+		devCenter, err := p.PromptDevCenter(ctx)
 		if err != nil {
 			return nil, err
 		}
-		p.config.Name = devCenterName
+		p.config.Name = devCenter.Name
+		devCenterName = devCenter.Name
 	}
 
 	projectName := p.config.Project
 	if projectName == "" {
-		projectName, err = p.PromptProject(ctx, devCenterName)
+		project, err := p.PromptProject(ctx, devCenterName)
 		if err != nil {
 			return nil, err
 		}
-		p.config.Project = projectName
+		p.config.Project = project.Name
+		projectName = project.Name
 	}
 
 	envDefinitionName := p.config.EnvironmentDefinition
@@ -62,11 +67,11 @@ func (p *Prompter) PromptForValues(ctx context.Context) (*Config, error) {
 	return p.config, nil
 }
 
-func (p *Prompter) PromptDevCenter(ctx context.Context) (string, error) {
+func (p *Prompter) PromptDevCenter(ctx context.Context) (*devcentersdk.DevCenter, error) {
 	devCenters := []*devcentersdk.DevCenter{}
 	writeableProjects, err := p.manager.WritableProjects(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	for _, project := range writeableProjects {
@@ -79,17 +84,17 @@ func (p *Prompter) PromptDevCenter(ctx context.Context) (string, error) {
 		}
 	}
 
+	slices.SortFunc(devCenters, func(x, y *devcentersdk.DevCenter) bool {
+		return x.Name < y.Name
+	})
+
 	devCenterNames := []string{}
 	for _, devCenter := range devCenters {
 		devCenterNames = append(devCenterNames, devCenter.Name)
 	}
 
-	slices.SortFunc(devCenterNames, func(x, y string) bool {
-		return x < y
-	})
-
 	if len(devCenterNames) == 1 {
-		return devCenterNames[0], nil
+		return devCenters[0], nil
 	}
 
 	selected, err := p.console.Select(ctx, input.ConsoleOptions{
@@ -98,34 +103,39 @@ func (p *Prompter) PromptDevCenter(ctx context.Context) (string, error) {
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return devCenterNames[selected], nil
+	return devCenters[selected], nil
 }
 
-func (p *Prompter) PromptCatalog(ctx context.Context, devCenterName string, projectName string) (string, error) {
-	catalogs, err := p.devCenterClient.
+func (p *Prompter) PromptCatalog(
+	ctx context.Context,
+	devCenterName string,
+	projectName string,
+) (*devcentersdk.Catalog, error) {
+	catalogsResponse, err := p.devCenterClient.
 		DevCenterByName(devCenterName).
 		ProjectByName(projectName).
 		Catalogs().
 		Get(ctx)
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	catalogs := catalogsResponse.Value
+	slices.SortFunc(catalogs, func(x, y *devcentersdk.Catalog) bool {
+		return x.Name < y.Name
+	})
+
 	catalogNames := []string{}
-	for _, catalog := range catalogs.Value {
+	for _, catalog := range catalogs {
 		catalogNames = append(catalogNames, catalog.Name)
 	}
 
-	slices.SortFunc(catalogNames, func(x, y string) bool {
-		return x < y
-	})
-
 	if len(catalogNames) == 1 {
-		return catalogNames[0], nil
+		return catalogs[0], nil
 	}
 
 	selected, err := p.console.Select(ctx, input.ConsoleOptions{
@@ -134,17 +144,21 @@ func (p *Prompter) PromptCatalog(ctx context.Context, devCenterName string, proj
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return catalogNames[selected], nil
+	return catalogs[selected], nil
 }
 
-func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (string, error) {
+func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (*devcentersdk.Project, error) {
 	writeableProjects, err := p.manager.WritableProjects(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+
+	slices.SortFunc(writeableProjects, func(x, y *devcentersdk.Project) bool {
+		return x.Name < y.Name
+	})
 
 	projectNames := []string{}
 	for _, project := range writeableProjects {
@@ -153,12 +167,8 @@ func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (str
 		}
 	}
 
-	slices.SortFunc(projectNames, func(x, y string) bool {
-		return x < y
-	})
-
 	if len(projectNames) == 1 {
-		return projectNames[0], nil
+		return writeableProjects[0], nil
 	}
 
 	selected, err := p.console.Select(ctx, input.ConsoleOptions{
@@ -167,34 +177,39 @@ func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (str
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return projectNames[selected], nil
+	return writeableProjects[selected], nil
 }
 
-func (p *Prompter) PromptEnvironmentType(ctx context.Context, devCenterName string, projectName string) (string, error) {
-	envTypes, err := p.devCenterClient.
+func (p *Prompter) PromptEnvironmentType(
+	ctx context.Context,
+	devCenterName string,
+	projectName string,
+) (*devcentersdk.EnvironmentType, error) {
+	envTypesResponse, err := p.devCenterClient.
 		DevCenterByName(devCenterName).
 		ProjectByName(projectName).
 		EnvironmentTypes().
 		Get(ctx)
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	envTypes := envTypesResponse.Value
+	slices.SortFunc(envTypes, func(x, y *devcentersdk.EnvironmentType) bool {
+		return x.Name < y.Name
+	})
+
 	envTypeNames := []string{}
-	for _, envType := range envTypes.Value {
+	for _, envType := range envTypesResponse.Value {
 		envTypeNames = append(envTypeNames, envType.Name)
 	}
 
-	slices.SortFunc(envTypeNames, func(x, y string) bool {
-		return x < y
-	})
-
 	if len(envTypeNames) == 1 {
-		return envTypeNames[0], nil
+		return envTypes[0], nil
 	}
 
 	selected, err := p.console.Select(ctx, input.ConsoleOptions{
@@ -203,17 +218,17 @@ func (p *Prompter) PromptEnvironmentType(ctx context.Context, devCenterName stri
 	})
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return envTypeNames[selected], nil
+	return envTypes[selected], nil
 }
 
 func (p *Prompter) PromptEnvironmentDefinition(
 	ctx context.Context,
 	devCenterName, projectName string,
 ) (*devcentersdk.EnvironmentDefinition, error) {
-	envDefinitions, err := p.devCenterClient.
+	envDefinitionsResponse, err := p.devCenterClient.
 		DevCenterByName(devCenterName).
 		ProjectByName(projectName).
 		EnvironmentDefinitions().
@@ -223,12 +238,13 @@ func (p *Prompter) PromptEnvironmentDefinition(
 		return nil, err
 	}
 
-	slices.SortFunc(envDefinitions.Value, func(x, y *devcentersdk.EnvironmentDefinition) bool {
+	environmentDefinitions := envDefinitionsResponse.Value
+	slices.SortFunc(environmentDefinitions, func(x, y *devcentersdk.EnvironmentDefinition) bool {
 		return x.Name < y.Name
 	})
 
 	envDefinitionNames := []string{}
-	for _, envDefinition := range envDefinitions.Value {
+	for _, envDefinition := range environmentDefinitions {
 		envDefinitionNames = append(envDefinitionNames, envDefinition.Name)
 	}
 
@@ -241,7 +257,7 @@ func (p *Prompter) PromptEnvironmentDefinition(
 		return nil, err
 	}
 
-	return envDefinitions.Value[selected], nil
+	return environmentDefinitions[selected], nil
 }
 
 // Prompts the user for values defined within the environment definition parameters
