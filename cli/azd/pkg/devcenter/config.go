@@ -29,8 +29,18 @@ type Config struct {
 	EnvironmentDefinition string `json:"environmentDefinition,omitempty" yaml:"environmentDefinition,omitempty"`
 }
 
-func (c *Config) IsValid() bool {
-	return c.Name != "" &&
-		c.Project != "" &&
-		c.EnvironmentDefinition != ""
+func (c *Config) EnsureValid() error {
+	if c.Name == "" {
+		return fmt.Errorf("devcenter name is required")
+	}
+
+	if c.Project == "" {
+		return fmt.Errorf("devcenter project is required")
+	}
+
+	if c.EnvironmentDefinition == "" {
+		return fmt.Errorf("devcenter environment definition is required")
+	}
+
+	return nil
 }

@@ -69,13 +69,37 @@ func (m *Manager) Initialize(ctx context.Context) (*Config, error) {
 	return m.config, nil
 }
 
-// getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
-// Right now this will retrieve the outputs from the latest azure deployment
-// Long term this will call into ADE Outputs API
-func (m *Manager) Outputs(
+func (m *Manager) Deployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
-) (map[string]provisioning.OutputParameter, error) {
+	filter FilterPredicate,
+) (infra.Deployment, error) {
+	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing resource group id: %w", err)
+	}
+
+	latestDeployment, err := m.LatestArmDeployment(ctx, env, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting latest deployment: %w", err)
+	}
+
+	return infra.NewResourceGroupDeployment(
+		m.deploymentsService,
+		m.deploymentOperations,
+		resourceGroupId.SubscriptionId,
+		resourceGroupId.Name,
+		*latestDeployment.Name,
+	), nil
+}
+
+type FilterPredicate func(d *armresources.DeploymentExtended) bool
+
+func (m *Manager) LatestArmDeployment(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+	filter FilterPredicate,
+) (*armresources.DeploymentExtended, error) {
 	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
 	if err != nil {
 		return nil, fmt.Errorf("failed parsing resource group id: %w", err)
@@ -111,7 +135,12 @@ func (m *Manager) Outputs(
 			*tagProjectName == m.config.Project ||
 			*tagEnvTypeName == m.config.EnvironmentType ||
 			*tagEnvName == env.Name {
-			return true
+
+			if filter == nil {
+				return true
+			}
+
+			return filter(d)
 		}
 
 		return false
@@ -121,7 +150,26 @@ func (m *Manager) Outputs(
 		return nil, fmt.Errorf("failed to find latest deployment")
 	}
 
-	latestDeployment := deployments[latestDeploymentIndex]
+	return deployments[latestDeploymentIndex], nil
+}
+
+// getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
+// Right now this will retrieve the outputs from the latest azure deployment
+// Long term this will call into ADE Outputs API
+func (m *Manager) Outputs(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+) (map[string]provisioning.OutputParameter, error) {
+	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing resource group id: %w", err)
+	}
+
+	latestDeployment, err := m.LatestArmDeployment(ctx, env, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting latest deployment: %w", err)
+	}
+
 	outputs := createOutputParameters(azapi.CreateDeploymentOutput(latestDeployment.Properties.Outputs))
 
 	// Set up AZURE_SUBSCRIPTION_ID and AZURE_RESOURCE_GROUP environment variables

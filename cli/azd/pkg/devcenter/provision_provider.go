@@ -2,12 +2,19 @@ package devcenter
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
@@ -28,8 +35,10 @@ type ProvisionProvider struct {
 	envManager      environment.Manager
 	config          *Config
 	devCenterClient devcentersdk.DevCenterClient
+	resourceManager *infra.AzureResourceManager
 	manager         *Manager
 	prompter        *Prompter
+	options         provisioning.Options
 }
 
 func NewDevCenterProvider(
@@ -38,6 +47,7 @@ func NewDevCenterProvider(
 	envManager environment.Manager,
 	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
+	resourceManager *infra.AzureResourceManager,
 	manager *Manager,
 	prompter *Prompter,
 ) provisioning.Provider {
@@ -47,6 +57,7 @@ func NewDevCenterProvider(
 		envManager:      envManager,
 		config:          config,
 		devCenterClient: devCenterClient,
+		resourceManager: resourceManager,
 		manager:         manager,
 		prompter:        prompter,
 	}
@@ -57,6 +68,8 @@ func (p *ProvisionProvider) Name() string {
 }
 
 func (p *ProvisionProvider) Initialize(ctx context.Context, projectPath string, options provisioning.Options) error {
+	p.options = options
+
 	return p.EnsureEnv(ctx)
 }
 
@@ -64,8 +77,8 @@ func (p *ProvisionProvider) State(
 	ctx context.Context,
 	options *provisioning.StateOptions,
 ) (*provisioning.StateResult, error) {
-	if !p.config.IsValid() {
-		return nil, fmt.Errorf("invalid devcenter configuration")
+	if err := p.config.EnsureValid(); err != nil {
+		return nil, fmt.Errorf("invalid devcenter configuration, %w", err)
 	}
 
 	envName := p.env.GetEnvName()
@@ -92,8 +105,21 @@ func (p *ProvisionProvider) State(
 }
 
 func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployResult, error) {
-	if !p.config.IsValid() {
-		return nil, fmt.Errorf("invalid devcenter configuration")
+	if err := p.config.EnsureValid(); err != nil {
+		return nil, fmt.Errorf("invalid devcenter configuration, %w", err)
+	}
+
+	if hasInfraTemplates(p.options.Path) {
+		//nolint:lll
+		warningMsg := fmt.Sprintf(
+			"WARNING: IaC templates were found at '%s'. IaC templates are not supported for Dev Center environments and will be ignored.\n",
+			p.options.Path,
+		)
+
+		p.console.Message(
+			ctx,
+			output.WithWarningFormat(warningMsg),
+		)
 	}
 
 	envDef, err := p.devCenterClient.
@@ -146,13 +172,21 @@ func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployRes
 		return nil, fmt.Errorf("failed creating environment: %w", err)
 	}
 
+	p.console.StopSpinner(ctx, spinnerMessage, input.StepDone)
+
+	pollingContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	spinnerMessage = "Provisioning devcenter environment"
+	p.console.ShowSpinner(ctx, spinnerMessage, input.Step)
+
+	go p.pollForEnvironment(pollingContext, envName)
+
 	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
 		p.console.StopSpinner(ctx, spinnerMessage, input.StepFailed)
 		return nil, fmt.Errorf("failed creating environment: %w", err)
 	}
-
-	p.console.StopSpinner(ctx, spinnerMessage, input.StepDone)
 
 	environment, err := p.devCenterClient.
 		DevCenterByName(p.config.Name).
@@ -161,8 +195,11 @@ func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployRes
 		Get(ctx)
 
 	if err != nil {
+		p.console.StopSpinner(ctx, spinnerMessage, input.StepFailed)
 		return nil, fmt.Errorf("failed getting environment: %w", err)
 	}
+
+	p.console.StopSpinner(ctx, spinnerMessage, input.StepDone)
 
 	outputs, err := p.manager.Outputs(ctx, environment)
 	if err != nil {
@@ -187,8 +224,8 @@ func (p *ProvisionProvider) Destroy(
 	ctx context.Context,
 	options provisioning.DestroyOptions,
 ) (*provisioning.DestroyResult, error) {
-	if !p.config.IsValid() {
-		return nil, fmt.Errorf("invalid devcenter configuration")
+	if err := p.config.EnsureValid(); err != nil {
+		return nil, fmt.Errorf("invalid devcenter configuration, %w", err)
 	}
 
 	envName := p.env.GetEnvName()
@@ -306,6 +343,85 @@ func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
 	return nil
 }
 
+// Polls for the ADE environment and ARM deployment to be created
+func (p *ProvisionProvider) pollForEnvironment(ctx context.Context, envName string) {
+	initialDelay := 3 * time.Second
+	regularDelay := 5 * time.Second
+	timer := time.NewTimer(initialDelay)
+	pollStartTime := time.Now()
+
+	for {
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+			environment, err := p.devCenterClient.
+				DevCenterByName(p.config.Name).
+				ProjectByName(p.config.Project).
+				EnvironmentByName(envName).
+				Get(ctx)
+
+			// We need to wait until the ADE environment has created the resource group
+			if err != nil ||
+				environment == nil ||
+				environment.ProvisioningState == devcentersdk.ProvisioningStateCreating ||
+				environment.ResourceGroupId == "" {
+				timer.Reset(regularDelay)
+				continue
+			}
+
+			// After the resource group has been created
+			// We can start polling for a new deployment that started after we started polling
+			deployment, err := p.manager.Deployment(ctx, environment, func(d *armresources.DeploymentExtended) bool {
+				return d.Properties.Timestamp.After(pollStartTime)
+			})
+
+			if err != nil || deployment == nil {
+				timer.Reset(regularDelay)
+				continue
+			}
+
+			timer.Stop()
+
+			// Finally polling for provisioning progress
+			go p.pollForProgress(ctx, deployment)
+		}
+	}
+}
+
+// Polls the ARM deployment triggered by ADE and start reporting incremental provisioning progress
+func (p *ProvisionProvider) pollForProgress(ctx context.Context, deployment infra.Deployment) {
+	// Disable reporting progress if needed
+	if use, err := strconv.ParseBool(os.Getenv("AZD_DEBUG_PROVISION_PROGRESS_DISABLE")); err == nil && use {
+		log.Println("Disabling progress reporting since AZD_DEBUG_PROVISION_PROGRESS_DISABLE was set")
+		return
+	}
+
+	// Report incremental progress
+	progressDisplay := provisioning.NewProvisioningProgressDisplay(p.resourceManager, p.console, deployment)
+
+	initialDelay := 3 * time.Second
+	regularDelay := 10 * time.Second
+	timer := time.NewTimer(initialDelay)
+	queryStartTime := time.Now()
+
+	for {
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+			if err := progressDisplay.ReportProgress(ctx, &queryStartTime); err != nil {
+				// We don't want to fail the whole deployment if a progress reporting error occurs
+				log.Printf("error while reporting progress: %s", err.Error())
+			}
+
+			timer.Reset(regularDelay)
+		}
+	}
+}
+
 func mapBicepTypeToInterfaceType(s string) provisioning.ParameterType {
 	switch s {
 	case "String", "string", "secureString", "securestring":
@@ -360,4 +476,18 @@ func createInputParameters(
 	}
 
 	return inputParams
+}
+
+// hasInfraTemplates returns true if the specified path contains any infrastructure templates
+func hasInfraTemplates(path string) bool {
+	if _, err := os.Stat(path); err != nil && errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	entries, err := os.ReadDir(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	return len(entries) > 0
 }

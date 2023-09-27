@@ -44,7 +44,7 @@ func (s *EnvironmentStore) ConfigPath(env *environment.Environment) string {
 func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnvironment, error) {
 	// If we don't have a valid devcenter configuration yet
 	// then prompt the user to initialize the correct configuration then provide the listing
-	if !s.config.IsValid() {
+	if err := s.config.EnsureValid(); err != nil {
 		updatedConfig, err := s.manager.Initialize(ctx)
 		if err != nil {
 			return []*contracts.EnvListEnvironment{}, nil
@@ -79,7 +79,7 @@ func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnviro
 
 func (s *EnvironmentStore) Get(ctx context.Context, name string) (*environment.Environment, error) {
 	// If the devcenter configuration is not valid then we don't have enough information to query for the environment
-	if !s.config.IsValid() {
+	if err := s.config.EnsureValid(); err != nil {
 		return nil, fmt.Errorf("%s %w", name, environment.ErrNotFound)
 	}
 

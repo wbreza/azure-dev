@@ -26,6 +26,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/httputil"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
 	infraBicep "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/bicep"
 	infraTerraform "github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning/terraform"
@@ -591,6 +592,8 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterSingleton(terraform.NewTerraformCli)
 
 	// Provisioning
+	container.RegisterSingleton(infra.NewAzureResourceManager)
+
 	container.RegisterTransient(provisioning.NewManager)
 	container.RegisterSingleton(provisioning.NewPrincipalIdProvider)
 	container.RegisterSingleton(prompt.NewDefaultPrompter)
