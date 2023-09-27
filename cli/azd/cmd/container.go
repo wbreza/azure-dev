@@ -236,6 +236,18 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	container.RegisterSingleton(environment.NewLocalFileDataStore)
 	container.RegisterSingleton(environment.NewManager)
 
+	container.RegisterSingleton(func() *lazy.Lazy[environment.LocalDataStore] {
+		return lazy.NewLazy(func() (environment.LocalDataStore, error) {
+			var localDataStore environment.LocalDataStore
+			err := container.Resolve(&localDataStore)
+			if err != nil {
+				return nil, err
+			}
+
+			return localDataStore, nil
+		})
+	})
+
 	// Environment manager depends on azd context
 	container.RegisterSingleton(func(azdContext *lazy.Lazy[*azdcontext.AzdContext]) *lazy.Lazy[environment.Manager] {
 		return lazy.NewLazy(func() (environment.Manager, error) {
@@ -280,19 +292,19 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			return nil, fmt.Errorf("loading user config: %w", err)
 		}
 
+		// The project config may not be available yet
+		// Ex) Within init phase of fingerprinting
+		projectConfig, _ := lazyProjectConfig.GetValue()
+
 		// When devcenter is enabled in azd config, use devcenter as the remote state provider
 		// regardless of any other remote state configuration
-		if devcenter.IsEnabled(userConfig) {
+		if IsDevCenterEnabled(userConfig, projectConfig) {
 			remoteStateConfig = &state.RemoteConfig{
 				Backend: string(devcenter.RemoteKindDevCenter),
 			}
 
 			return remoteStateConfig, nil
 		}
-
-		// The project config may not be available yet
-		// Ex) Within init phase of fingerprinting
-		projectConfig, _ := lazyProjectConfig.GetValue()
 
 		// Lookup remote state config in the following precedence:
 		// 1. Project azure.yaml
@@ -417,10 +429,10 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// DevCenter Config
 	container.RegisterSingleton(func(
 		ctx context.Context,
-		azdCtx *azdcontext.AzdContext,
+		lazyAzdCtx *lazy.Lazy[*azdcontext.AzdContext],
 		userConfigManager config.UserConfigManager,
-		projectConfig *project.ProjectConfig,
-		localEnvStore environment.LocalDataStore,
+		lazyProjectConfig *lazy.Lazy[*project.ProjectConfig],
+		lazyLocalEnvStore *lazy.Lazy[environment.LocalDataStore],
 	) (*devcenter.Config, error) {
 		// Load deventer configuration in the following precedence:
 		// 1. Environment variables (AZURE_DEVCENTER_*)
@@ -437,23 +449,28 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			EnvironmentDefinition: os.Getenv(devcenter.DevCenterEnvDefinitionEnvName),
 		}
 
+		azdCtx, _ := lazyAzdCtx.GetValue()
+		localEnvStore, _ := lazyLocalEnvStore.GetValue()
+
 		// Local environment configuration
 		var environmentConfig *devcenter.Config
-		defaultEnvName, err := azdCtx.GetDefaultEnvironmentName()
-		if err != nil {
-			environmentConfig = &devcenter.Config{}
-		} else {
-			// Attempt to load any devcenter configuration from local environment
-			env, err := localEnvStore.Get(ctx, defaultEnvName)
-			if err == nil {
-				devCenterNode, exists := env.Config.Get(devcenter.ConfigPath)
-				if exists {
-					value, err := devcenter.ParseConfig(devCenterNode)
-					if err != nil {
-						return nil, err
-					}
+		if azdCtx != nil && localEnvStore != nil {
+			defaultEnvName, err := azdCtx.GetDefaultEnvironmentName()
+			if err != nil {
+				environmentConfig = &devcenter.Config{}
+			} else {
+				// Attempt to load any devcenter configuration from local environment
+				env, err := localEnvStore.Get(ctx, defaultEnvName)
+				if err == nil {
+					devCenterNode, exists := env.Config.Get(devcenter.ConfigPath)
+					if exists {
+						value, err := devcenter.ParseConfig(devCenterNode)
+						if err != nil {
+							return nil, err
+						}
 
-					environmentConfig = value
+						environmentConfig = value
+					}
 				}
 			}
 		}
@@ -475,10 +492,17 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			}
 		}
 
+		// Project Configuration
+		var projectConfig *devcenter.Config
+		projConfig, _ := lazyProjectConfig.GetValue()
+		if projConfig != nil {
+			projectConfig = projConfig.DevCenter
+		}
+
 		return devcenter.MergeConfigs(
 			envVarConfig,
 			environmentConfig,
-			projectConfig.DevCenter,
+			projectConfig,
 			userConfig,
 		), nil
 	})
@@ -498,7 +522,10 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// Templates
 
 	// Gets a list of default template sources used in azd.
-	container.RegisterSingleton(func(configManager config.UserConfigManager) (*templates.SourceOptions, error) {
+	container.RegisterSingleton(func(
+		configManager config.UserConfigManager,
+		lazyProjectConfig *lazy.Lazy[*project.ProjectConfig],
+	) (*templates.SourceOptions, error) {
 		options := &templates.SourceOptions{
 			DefaultSources:        []*templates.SourceConfig{},
 			LoadConfiguredSources: true,
@@ -509,9 +536,11 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 			return nil, err
 		}
 
+		projectConfig, _ := lazyProjectConfig.GetValue()
+
 		// When devcenter is enabled, consider devcenter source as default source
 		// And don't load any other configured sources
-		if devcenter.IsEnabled(config) {
+		if IsDevCenterEnabled(config, projectConfig) {
 			options.DefaultSources = []*templates.SourceConfig{devcenter.SourceDevCenter}
 			options.LoadConfiguredSources = false
 		}
@@ -614,15 +643,20 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	}
 
 	// Function to determine the default IaC provider when provisioning
-	container.RegisterSingleton(func(configManager config.UserConfigManager) provisioning.DefaultProviderResolver {
+	container.RegisterSingleton(func(
+		lazyProjectConfig *lazy.Lazy[*project.ProjectConfig],
+		configManager config.UserConfigManager,
+	) provisioning.DefaultProviderResolver {
 		return func() (provisioning.ProviderKind, error) {
 			config, err := configManager.Load()
 			if err != nil {
 				return provisioning.NotSpecified, err
 			}
 
+			projectConfig, _ := lazyProjectConfig.GetValue()
+
 			// DevCenter provider is default when enabled
-			if devcenter.IsEnabled(config) {
+			if IsDevCenterEnabled(config, projectConfig) {
 				return provisioning.DevCenter, nil
 			}
 

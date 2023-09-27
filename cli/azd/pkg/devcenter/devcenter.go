@@ -3,12 +3,9 @@ package devcenter
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-
-	"github.com/azure/azure-dev/cli/azd/pkg/config"
 )
 
-var modeConfigPath = fmt.Sprintf("%s.mode", ConfigPath)
+var ModeConfigPath = fmt.Sprintf("%s.mode", ConfigPath)
 
 func MergeConfigs(configs ...*Config) *Config {
 	if len(configs) == 0 {
@@ -67,18 +64,4 @@ func ParseConfig(partialConfig any) (*Config, error) {
 	}
 
 	return config, nil
-}
-
-func IsEnabled(config config.Config) bool {
-	devCenterModeNode, ok := config.Get(modeConfigPath)
-	if !ok {
-		return false
-	}
-
-	devCenterValue, ok := devCenterModeNode.(string)
-	if !ok {
-		return false
-	}
-
-	return strings.EqualFold(devCenterValue, "on")
 }

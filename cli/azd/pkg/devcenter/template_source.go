@@ -23,11 +23,15 @@ var SourceDevCenter = &templates.SourceConfig{
 }
 
 type TemplateSource struct {
+	config          *Config
+	manager         *Manager
 	devCenterClient devcentersdk.DevCenterClient
 }
 
-func NewTemplateSource(devCenterClient devcentersdk.DevCenterClient) templates.Source {
+func NewTemplateSource(config *Config, manager *Manager, devCenterClient devcentersdk.DevCenterClient) templates.Source {
 	return &TemplateSource{
+		config:          config,
+		manager:         manager,
 		devCenterClient: devCenterClient,
 	}
 }
@@ -37,7 +41,22 @@ func (s *TemplateSource) Name() string {
 }
 
 func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Template, error) {
-	projects, err := s.devCenterClient.WritableProjects(ctx)
+	var devCenterFilter DevCenterFilterPredicate
+	var projectFilter ProjectFilterPredicate
+
+	if s.config.Name != "" {
+		devCenterFilter = func(dc *devcentersdk.DevCenter) bool {
+			return strings.EqualFold(dc.Name, s.config.Name)
+		}
+	}
+
+	if s.config.Project != "" {
+		projectFilter = func(p *devcentersdk.Project) bool {
+			return strings.EqualFold(p.Name, s.config.Project)
+		}
+	}
+
+	projects, err := s.manager.WritableProjectsWithFilter(ctx, devCenterFilter, projectFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting writable projects: %w", err)
 	}
@@ -53,6 +72,11 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 
 		go func(project *devcentersdk.Project) {
 			defer wg.Done()
+
+			// If a project is specified in the config then only consider templates for the specified project
+			if s.config.Project != "" && !strings.EqualFold(s.config.Project, project.Name) {
+				return
+			}
 
 			envDefinitions, err := s.devCenterClient.
 				DevCenterByEndpoint(project.DevCenter.ServiceUri).

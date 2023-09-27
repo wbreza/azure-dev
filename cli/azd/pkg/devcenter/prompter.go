@@ -12,20 +12,59 @@ import (
 )
 
 type Prompter struct {
+	config          *Config
 	console         input.Console
+	manager         *Manager
 	devCenterClient devcentersdk.DevCenterClient
 }
 
-func NewPrompter(console input.Console, devCenterClient devcentersdk.DevCenterClient) *Prompter {
+func NewPrompter(config *Config, console input.Console, manager *Manager, devCenterClient devcentersdk.DevCenterClient) *Prompter {
 	return &Prompter{
+		config:          config,
 		console:         console,
+		manager:         manager,
 		devCenterClient: devCenterClient,
 	}
 }
 
+func (p *Prompter) PromptForValues(ctx context.Context) (*Config, error) {
+	devCenterName := p.config.Name
+	var err error
+
+	if devCenterName == "" {
+		devCenterName, err = p.PromptDevCenter(ctx)
+		if err != nil {
+			return nil, err
+		}
+		p.config.Name = devCenterName
+	}
+
+	projectName := p.config.Project
+	if projectName == "" {
+		projectName, err = p.PromptProject(ctx, devCenterName)
+		if err != nil {
+			return nil, err
+		}
+		p.config.Project = projectName
+	}
+
+	envDefinitionName := p.config.EnvironmentDefinition
+	if envDefinitionName == "" {
+		envDefinition, err := p.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
+		if err != nil {
+			return nil, err
+		}
+		envDefinitionName = envDefinition.Name
+		p.config.Catalog = envDefinition.CatalogName
+		p.config.EnvironmentDefinition = envDefinitionName
+	}
+
+	return p.config, nil
+}
+
 func (p *Prompter) PromptDevCenter(ctx context.Context) (string, error) {
 	devCenters := []*devcentersdk.DevCenter{}
-	writeableProjects, err := p.devCenterClient.WritableProjects(ctx)
+	writeableProjects, err := p.manager.WritableProjects(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -102,7 +141,7 @@ func (p *Prompter) PromptCatalog(ctx context.Context, devCenterName string, proj
 }
 
 func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (string, error) {
-	writeableProjects, err := p.devCenterClient.WritableProjects(ctx)
+	writeableProjects, err := p.manager.WritableProjects(ctx)
 	if err != nil {
 		return "", err
 	}

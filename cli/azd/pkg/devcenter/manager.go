@@ -3,6 +3,7 @@ package devcenter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
@@ -10,69 +11,144 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra"
 	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
+	"go.uber.org/multierr"
 	"golang.org/x/exp/slices"
 )
 
+type DeploymentFilterPredicate func(d *armresources.DeploymentExtended) bool
+type ProjectFilterPredicate func(p *devcentersdk.Project) bool
+type DevCenterFilterPredicate func(dc *devcentersdk.DevCenter) bool
+
 type Manager struct {
 	config               *Config
-	prompter             *Prompter
+	client               devcentersdk.DevCenterClient
 	deploymentsService   azapi.Deployments
 	deploymentOperations azapi.DeploymentOperations
 }
 
 func NewManager(
 	config *Config,
-	prompter *Prompter,
+	client devcentersdk.DevCenterClient,
 	deploymentsService azapi.Deployments,
 	deploymentOperations azapi.DeploymentOperations,
 ) *Manager {
 	return &Manager{
 		config:               config,
-		prompter:             prompter,
+		client:               client,
 		deploymentsService:   deploymentsService,
 		deploymentOperations: deploymentOperations,
 	}
 }
 
-func (m *Manager) Initialize(ctx context.Context) (*Config, error) {
-	devCenterName := m.config.Name
-	var err error
-
-	if devCenterName == "" {
-		devCenterName, err = m.prompter.PromptDevCenter(ctx)
-		if err != nil {
-			return nil, err
-		}
-		m.config.Name = devCenterName
+func (m *Manager) WritableProjectsWithFilter(
+	ctx context.Context,
+	devCenterFilter DevCenterFilterPredicate,
+	projectFilter ProjectFilterPredicate,
+) ([]*devcentersdk.Project, error) {
+	writableProjects, err := m.WritableProjects(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	projectName := m.config.Project
-	if projectName == "" {
-		projectName, err = m.prompter.PromptProject(ctx, devCenterName)
-		if err != nil {
-			return nil, err
+	if devCenterFilter == nil {
+		devCenterFilter = func(dc *devcentersdk.DevCenter) bool {
+			return true
 		}
-		m.config.Project = projectName
 	}
 
-	envDefinitionName := m.config.EnvironmentDefinition
-	if envDefinitionName == "" {
-		envDefinition, err := m.prompter.PromptEnvironmentDefinition(ctx, devCenterName, projectName)
-		if err != nil {
-			return nil, err
+	if projectFilter == nil {
+		projectFilter = func(p *devcentersdk.Project) bool {
+			return true
 		}
-		envDefinitionName = envDefinition.Name
-		m.config.Catalog = envDefinition.CatalogName
-		m.config.EnvironmentDefinition = envDefinitionName
 	}
 
-	return m.config, nil
+	filteredProjects := []*devcentersdk.Project{}
+	for _, project := range writableProjects {
+		if devCenterFilter(project.DevCenter) && projectFilter(project) {
+			filteredProjects = append(filteredProjects, project)
+		}
+	}
+
+	return filteredProjects, nil
+}
+
+// Gets a list of ADE projects that a user has write permissions
+// Write permissions of a project allow the user to create new environment in the project
+func (m *Manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project, error) {
+	devCenterList, err := m.client.DevCenters().Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed getting dev centers: %w", err)
+	}
+
+	projectsChan := make(chan *devcentersdk.Project)
+	errorsChan := make(chan error)
+
+	// Perform the lookup and checking for projects in parallel to speed up the process
+	var wg sync.WaitGroup
+
+	for _, devCenter := range devCenterList.Value {
+		wg.Add(1)
+
+		go func(dc *devcentersdk.DevCenter) {
+			defer wg.Done()
+
+			projects, err := m.client.
+				DevCenterByEndpoint(dc.ServiceUri).
+				Projects().
+				Get(ctx)
+
+			if err != nil {
+				errorsChan <- err
+				return
+			}
+
+			for _, project := range projects.Value {
+				wg.Add(1)
+
+				go func(p *devcentersdk.Project) {
+					defer wg.Done()
+
+					hasWriteAccess := m.client.
+						DevCenterByEndpoint(p.DevCenter.ServiceUri).
+						ProjectByName(p.Name).
+						Permissions().
+						HasWriteAccess(ctx)
+
+					if hasWriteAccess {
+						projectsChan <- p
+					}
+				}(project)
+			}
+		}(devCenter)
+	}
+
+	go func() {
+		wg.Wait()
+		close(projectsChan)
+		close(errorsChan)
+	}()
+
+	writeableProjects := []*devcentersdk.Project{}
+	for project := range projectsChan {
+		writeableProjects = append(writeableProjects, project)
+	}
+
+	var allErrors error
+	for err := range errorsChan {
+		allErrors = multierr.Append(allErrors, err)
+	}
+
+	if allErrors != nil {
+		return nil, allErrors
+	}
+
+	return writeableProjects, nil
 }
 
 func (m *Manager) Deployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
-	filter FilterPredicate,
+	filter DeploymentFilterPredicate,
 ) (infra.Deployment, error) {
 	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
 	if err != nil {
@@ -93,12 +169,10 @@ func (m *Manager) Deployment(
 	), nil
 }
 
-type FilterPredicate func(d *armresources.DeploymentExtended) bool
-
 func (m *Manager) LatestArmDeployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
-	filter FilterPredicate,
+	filter DeploymentFilterPredicate,
 ) (*armresources.DeploymentExtended, error) {
 	resourceGroupId, err := devcentersdk.NewResourceGroupId(env.ResourceGroupId)
 	if err != nil {

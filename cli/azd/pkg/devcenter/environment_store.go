@@ -18,17 +18,20 @@ const (
 type EnvironmentStore struct {
 	config          *Config
 	devCenterClient devcentersdk.DevCenterClient
+	prompter        *Prompter
 	manager         *Manager
 }
 
 func NewEnvironmentStore(
 	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
+	prompter *Prompter,
 	manager *Manager,
 ) environment.RemoteDataStore {
 	return &EnvironmentStore{
 		config:          config,
 		devCenterClient: devCenterClient,
+		prompter:        prompter,
 		manager:         manager,
 	}
 }
@@ -45,7 +48,7 @@ func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnviro
 	// If we don't have a valid devcenter configuration yet
 	// then prompt the user to initialize the correct configuration then provide the listing
 	if err := s.config.EnsureValid(); err != nil {
-		updatedConfig, err := s.manager.Initialize(ctx)
+		updatedConfig, err := s.prompter.PromptForValues(ctx)
 		if err != nil {
 			return []*contracts.EnvListEnvironment{}, nil
 		}

@@ -296,7 +296,7 @@ func (p *ProvisionProvider) Destroy(
 // Require selection for devcenter, project, catalog, environment type, and environment definition
 func (p *ProvisionProvider) EnsureEnv(ctx context.Context) error {
 	currentConfig := *p.config
-	updatedConfig, err := p.manager.Initialize(ctx)
+	updatedConfig, err := p.prompter.PromptForValues(ctx)
 	if err != nil {
 		return err
 	}
