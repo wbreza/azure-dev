@@ -11,6 +11,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// Prompter provides a common set of methods for prompting the user for devcenter configuration values
 type Prompter struct {
 	config          *Config
 	console         input.Console
@@ -18,6 +19,7 @@ type Prompter struct {
 	devCenterClient devcentersdk.DevCenterClient
 }
 
+// NewPrompter creates a new devcenter prompter
 func NewPrompter(
 	config *Config,
 	console input.Console,
@@ -32,6 +34,7 @@ func NewPrompter(
 	}
 }
 
+// PromptForValues prompts the user for devcenter configuration values that have not been previously set
 func (p *Prompter) PromptForValues(ctx context.Context) (*Config, error) {
 	devCenterName := p.config.Name
 	if devCenterName == "" {
@@ -67,6 +70,8 @@ func (p *Prompter) PromptForValues(ctx context.Context) (*Config, error) {
 	return p.config, nil
 }
 
+// PromptDevCenter prompts the user to select a devcenter
+// If the user only has access to a single devcenter, then that devcenter will be returned
 func (p *Prompter) PromptDevCenter(ctx context.Context) (*devcentersdk.DevCenter, error) {
 	devCenters := []*devcentersdk.DevCenter{}
 	writeableProjects, err := p.manager.WritableProjects(ctx)
@@ -109,6 +114,8 @@ func (p *Prompter) PromptDevCenter(ctx context.Context) (*devcentersdk.DevCenter
 	return devCenters[selected], nil
 }
 
+// PromptCatalog prompts the user to select a catalog for the specified devcenter and project
+// If the user only has access to a single catalog, then that catalog will be returned
 func (p *Prompter) PromptCatalog(
 	ctx context.Context,
 	devCenterName string,
@@ -150,6 +157,8 @@ func (p *Prompter) PromptCatalog(
 	return catalogs[selected], nil
 }
 
+// PromptProject prompts the user to select a project for the specified devcenter
+// If the user only has access to a single project, then that project will be returned
 func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (*devcentersdk.Project, error) {
 	writeableProjects, err := p.manager.WritableProjects(ctx)
 	if err != nil {
@@ -183,6 +192,8 @@ func (p *Prompter) PromptProject(ctx context.Context, devCenterName string) (*de
 	return writeableProjects[selected], nil
 }
 
+// PromptEnvironmentType prompts the user to select an environment type for the specified devcenter and project
+// If the user only has access to a single environment type, then that environment type will be returned
 func (p *Prompter) PromptEnvironmentType(
 	ctx context.Context,
 	devCenterName string,
@@ -224,6 +235,7 @@ func (p *Prompter) PromptEnvironmentType(
 	return envTypes[selected], nil
 }
 
+// PromptEnvironmentDefinition prompts the user to select an environment definition for the specified devcenter and project
 func (p *Prompter) PromptEnvironmentDefinition(
 	ctx context.Context,
 	devCenterName, projectName string,
@@ -261,6 +273,7 @@ func (p *Prompter) PromptEnvironmentDefinition(
 }
 
 // Prompts the user for values defined within the environment definition parameters
+// Responses for prompt are stored in azd environment configuration and used for future provisioning operations
 func (p *Prompter) PromptParameters(
 	ctx context.Context,
 	env *environment.Environment,
@@ -274,9 +287,22 @@ func (p *Prompter) PromptParameters(
 			continue
 		}
 
+		// Process repoUrl parameter from defaults and allowed values
 		if param.Name == "repoUrl" {
-			paramValues[param.Name] = param.Allowed[0]
-			continue
+			var repoUrlValue string
+			if len(param.Allowed) > 0 {
+				repoUrlValue = param.Allowed[0]
+			} else {
+				value, ok := param.Default.(string)
+				if ok {
+					repoUrlValue = value
+				}
+			}
+
+			if repoUrlValue != "" {
+				paramValues[param.Name] = param.Allowed[0]
+				continue
+			}
 		}
 
 		paramPath := fmt.Sprintf("%s.%s", ProvisionParametersConfigPath, param.Name)

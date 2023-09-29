@@ -15,6 +15,7 @@ const (
 	RemoteKindDevCenter environment.RemoteKind = "devcenter"
 )
 
+// EnvironmentStore is a remote environment data store for devcenter environments
 type EnvironmentStore struct {
 	config          *Config
 	devCenterClient devcentersdk.DevCenterClient
@@ -22,6 +23,7 @@ type EnvironmentStore struct {
 	manager         *Manager
 }
 
+// NewEnvironmentStore creates a new devcenter environment store
 func NewEnvironmentStore(
 	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
@@ -36,14 +38,17 @@ func NewEnvironmentStore(
 	}
 }
 
+// EnvPath returns the path for the environment
 func (s *EnvironmentStore) EnvPath(env *environment.Environment) string {
 	return fmt.Sprintf("projects/%s/environments/%s", s.config.Project, env.GetEnvName())
 }
 
+// ConfigPath returns the path for the environment configuration
 func (s *EnvironmentStore) ConfigPath(env *environment.Environment) string {
 	return ""
 }
 
+// List returns a list of environments for the devcenter configuration
 func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnvironment, error) {
 	// If we don't have a valid devcenter configuration yet
 	// then prompt the user to initialize the correct configuration then provide the listing
@@ -80,6 +85,7 @@ func (s *EnvironmentStore) List(ctx context.Context) ([]*contracts.EnvListEnviro
 	return matches, nil
 }
 
+// Get returns the environment for the given name
 func (s *EnvironmentStore) Get(ctx context.Context, name string) (*environment.Environment, error) {
 	// If the devcenter configuration is not valid then we don't have enough information to query for the environment
 	if err := s.config.EnsureValid(); err != nil {
@@ -109,6 +115,7 @@ func (s *EnvironmentStore) Get(ctx context.Context, name string) (*environment.E
 	return env, nil
 }
 
+// Reload reloads the environment from the remote data store
 func (s *EnvironmentStore) Reload(ctx context.Context, env *environment.Environment) error {
 	environment, err := s.devCenterClient.
 		DevCenterByName(s.config.Name).
@@ -150,6 +157,9 @@ func (s *EnvironmentStore) Reload(ctx context.Context, env *environment.Environm
 	return nil
 }
 
+// Save saves the environment to the remote data store
+// DevCenter doesn't implement any APIs for saving environment configuration / metadata
+// outside of the environment definition itself or the ARM deployment outputs
 func (s *EnvironmentStore) Save(ctx context.Context, env *environment.Environment) error {
 	return nil
 }

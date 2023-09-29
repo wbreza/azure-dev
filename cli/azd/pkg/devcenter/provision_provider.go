@@ -23,12 +23,14 @@ import (
 const (
 	ProvisionParametersConfigPath = "provision.parameters"
 
+	// ADE environment ARM deployment tags
 	DeploymentTagDevCenterName    = "AdeDevCenterName"
 	DeploymentTagDevCenterProject = "AdeProjectName"
 	DeploymentTagEnvironmentType  = "AdeEnvironmentTypeName"
 	DeploymentTagEnvironmentName  = "AdeEnvironmentName"
 )
 
+// ProvisionProvider is a devcenter provider for provisioning ADE environments
 type ProvisionProvider struct {
 	console         input.Console
 	env             *environment.Environment
@@ -41,6 +43,7 @@ type ProvisionProvider struct {
 	options         provisioning.Options
 }
 
+// NewDevCenterProvider creates a new devcenter provider
 func NewDevCenterProvider(
 	console input.Console,
 	env *environment.Environment,
@@ -63,16 +66,19 @@ func NewDevCenterProvider(
 	}
 }
 
+// Name returns the name of the provider
 func (p *ProvisionProvider) Name() string {
 	return "Dev Center"
 }
 
+// Initialize initializes the provider
 func (p *ProvisionProvider) Initialize(ctx context.Context, projectPath string, options provisioning.Options) error {
 	p.options = options
 
 	return p.EnsureEnv(ctx)
 }
 
+// State returns the state of the environment from the most recent ARM deployment
 func (p *ProvisionProvider) State(
 	ctx context.Context,
 	options *provisioning.StateOptions,
@@ -104,6 +110,7 @@ func (p *ProvisionProvider) State(
 	}, nil
 }
 
+// Deploy deploys the environment from the configured environment definition
 func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployResult, error) {
 	if err := p.config.EnsureValid(); err != nil {
 		return nil, fmt.Errorf("invalid devcenter configuration, %w", err)
@@ -216,10 +223,12 @@ func (p *ProvisionProvider) Deploy(ctx context.Context) (*provisioning.DeployRes
 	return result, nil
 }
 
+// Preview previews the deployment of the environment from the configured environment definition
 func (p *ProvisionProvider) Preview(ctx context.Context) (*provisioning.DeployPreviewResult, error) {
 	return nil, fmt.Errorf("preview is not supported for devcenter")
 }
 
+// Destroy destroys the environment by deleting the ADE environment
 func (p *ProvisionProvider) Destroy(
 	ctx context.Context,
 	options provisioning.DestroyOptions,

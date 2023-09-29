@@ -15,10 +15,16 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// DeploymentFilterPredicate is a predicate function for filtering deployments
 type DeploymentFilterPredicate func(d *armresources.DeploymentExtended) bool
+
+// ProjectFilterPredicate is a predicate function for filtering projects
 type ProjectFilterPredicate func(p *devcentersdk.Project) bool
+
+// DevCenterFilterPredicate is a predicate function for filtering dev centers
 type DevCenterFilterPredicate func(dc *devcentersdk.DevCenter) bool
 
+// Manager provides a common set of methods for interactive with a devcenter and its environments
 type Manager struct {
 	config               *Config
 	client               devcentersdk.DevCenterClient
@@ -26,6 +32,7 @@ type Manager struct {
 	deploymentOperations azapi.DeploymentOperations
 }
 
+// NewManager creates a new devcenter manager
 func NewManager(
 	config *Config,
 	client devcentersdk.DevCenterClient,
@@ -40,6 +47,7 @@ func NewManager(
 	}
 }
 
+// WritableProjectsWithFilter gets a list of ADE projects that a user has write permissions for deployment
 func (m *Manager) WritableProjectsWithFilter(
 	ctx context.Context,
 	devCenterFilter DevCenterFilterPredicate,
@@ -145,6 +153,7 @@ func (m *Manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project
 	return writeableProjects, nil
 }
 
+// Deployment gets the Resource Group scoped deployment for the specified devcenter environment
 func (m *Manager) Deployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
@@ -169,6 +178,8 @@ func (m *Manager) Deployment(
 	), nil
 }
 
+// LatestArmDeployment gets the latest ARM deployment for the specified devcenter environment
+// When a filter is applied the latest deployment that matches the filter will be returned
 func (m *Manager) LatestArmDeployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
@@ -227,7 +238,7 @@ func (m *Manager) LatestArmDeployment(
 	return deployments[latestDeploymentIndex], nil
 }
 
-// getEnvironmentOutputs gets the outputs for the latest deployment of the specified environment
+// Outputs gets the outputs for the latest deployment of the specified environment
 // Right now this will retrieve the outputs from the latest azure deployment
 // Long term this will call into ADE Outputs API
 func (m *Manager) Outputs(
