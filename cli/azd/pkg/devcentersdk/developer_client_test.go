@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/config"
@@ -37,7 +38,14 @@ func Test_DevCenter_Client(t *testing.T) {
 		DefaultClientOptionsBuilder(*mockContext.Context, http.DefaultClient, "azd").
 		BuildCoreClientOptions()
 
-	client, err := NewDevCenterClient(credentials, options)
+	armOptions := azsdk.
+		DefaultClientOptionsBuilder(*mockContext.Context, http.DefaultClient, "azd").
+		BuildArmClientOptions()
+
+	resourceGraphClient, err := armresourcegraph.NewClient(credentials, armOptions)
+	require.NoError(t, err)
+
+	client, err := NewDevCenterClient(credentials, options, resourceGraphClient)
 	require.NoError(t, err)
 
 	// Get dev center list

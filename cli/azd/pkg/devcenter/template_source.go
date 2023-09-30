@@ -24,11 +24,11 @@ var SourceDevCenter = &templates.SourceConfig{
 
 type TemplateSource struct {
 	config          *Config
-	manager         *Manager
+	manager         Manager
 	devCenterClient devcentersdk.DevCenterClient
 }
 
-func NewTemplateSource(config *Config, manager *Manager, devCenterClient devcentersdk.DevCenterClient) templates.Source {
+func NewTemplateSource(config *Config, manager Manager, devCenterClient devcentersdk.DevCenterClient) templates.Source {
 	return &TemplateSource{
 		config:          config,
 		manager:         manager,
@@ -147,21 +147,36 @@ func (s *TemplateSource) ListTemplates(ctx context.Context) ([]*templates.Templa
 		close(errorsChan)
 	}()
 
-	distinctTemplates := []*templates.Template{}
-	for template := range templatesChan {
-		contains := slices.ContainsFunc(distinctTemplates, func(t *templates.Template) bool {
-			return t.Id == template.Id
-		})
-
-		if !contains {
-			distinctTemplates = append(distinctTemplates, template)
-		}
-	}
+	var doneGroup sync.WaitGroup
+	doneGroup.Add(2)
 
 	var allErrors error
-	for err := range errorsChan {
-		allErrors = multierr.Append(allErrors, err)
-	}
+	distinctTemplates := []*templates.Template{}
+
+	go func() {
+		defer doneGroup.Done()
+
+		for template := range templatesChan {
+			contains := slices.ContainsFunc(distinctTemplates, func(t *templates.Template) bool {
+				return t.Id == template.Id
+			})
+
+			if !contains {
+				distinctTemplates = append(distinctTemplates, template)
+			}
+		}
+	}()
+
+	go func() {
+		defer doneGroup.Done()
+
+		for err := range errorsChan {
+			allErrors = multierr.Append(allErrors, err)
+		}
+	}()
+
+	// Wait for all the templates and errors to be processed from channels
+	doneGroup.Wait()
 
 	if allErrors != nil {
 		return nil, allErrors

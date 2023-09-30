@@ -38,7 +38,7 @@ type ProvisionProvider struct {
 	config          *Config
 	devCenterClient devcentersdk.DevCenterClient
 	resourceManager *infra.AzureResourceManager
-	manager         *Manager
+	manager         Manager
 	prompter        *Prompter
 	options         provisioning.Options
 }
@@ -51,7 +51,7 @@ func NewDevCenterProvider(
 	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
 	resourceManager *infra.AzureResourceManager,
-	manager *Manager,
+	manager Manager,
 	prompter *Prompter,
 ) provisioning.Provider {
 	return &ProvisionProvider{

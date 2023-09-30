@@ -3,7 +3,6 @@ package devcentersdk
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -34,7 +33,7 @@ func (c *PermissionListRequestBuilder) Get(ctx context.Context) ([]*armauthoriza
 		return nil, err
 	}
 
-	options := azsdk.DefaultClientOptionsBuilder(ctx, http.DefaultClient, "azd").BuildArmClientOptions()
+	options := azsdk.DefaultClientOptionsBuilder(ctx, c.client.options.Transport, "azd").BuildArmClientOptions()
 	permissionsClient, err := armauthorization.NewPermissionsClient(project.SubscriptionId, c.client.credential, options)
 	if err != nil {
 		return nil, err

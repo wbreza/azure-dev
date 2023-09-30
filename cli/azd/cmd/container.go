@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/internal"
 	"github.com/azure/azure-dev/cli/azd/internal/repository"
@@ -272,7 +273,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// Remote Environment State Providers
 	remoteStateProviderMap := map[environment.RemoteKind]any{
 		environment.RemoteKindAzureBlobStorage: environment.NewStorageBlobDataStore,
-		devcenter.RemoteKindDevCenter:      devcenter.NewEnvironmentStore,
+		devcenter.RemoteKindDevCenter:          devcenter.NewEnvironmentStore,
 	}
 
 	for remoteKind, constructor := range remoteStateProviderMap {
@@ -511,12 +512,25 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 		ctx context.Context,
 		credential azcore.TokenCredential,
 		httpClient httputil.HttpClient,
+	) (*armresourcegraph.Client, error) {
+		options := azsdk.
+			DefaultClientOptionsBuilder(ctx, httpClient, "azd").
+			BuildArmClientOptions()
+
+		return armresourcegraph.NewClient(credential, options)
+	})
+
+	container.RegisterSingleton(func(
+		ctx context.Context,
+		credential azcore.TokenCredential,
+		httpClient httputil.HttpClient,
+		resourceGraphClient *armresourcegraph.Client,
 	) (devcentersdk.DevCenterClient, error) {
 		options := azsdk.
 			DefaultClientOptionsBuilder(ctx, httpClient, "azd").
 			BuildCoreClientOptions()
 
-		return devcentersdk.NewDevCenterClient(credential, options)
+		return devcentersdk.NewDevCenterClient(credential, options, resourceGraphClient)
 	})
 
 	// Templates

@@ -20,7 +20,7 @@ type EnvironmentStore struct {
 	config          *Config
 	devCenterClient devcentersdk.DevCenterClient
 	prompter        *Prompter
-	manager         *Manager
+	manager         Manager
 }
 
 // NewEnvironmentStore creates a new devcenter environment store
@@ -28,7 +28,7 @@ func NewEnvironmentStore(
 	config *Config,
 	devCenterClient devcentersdk.DevCenterClient,
 	prompter *Prompter,
-	manager *Manager,
+	manager Manager,
 ) environment.RemoteDataStore {
 	return &EnvironmentStore{
 		config:          config,
@@ -40,7 +40,7 @@ func NewEnvironmentStore(
 
 // EnvPath returns the path for the environment
 func (s *EnvironmentStore) EnvPath(env *environment.Environment) string {
-	return fmt.Sprintf("projects/%s/environments/%s", s.config.Project, env.GetEnvName())
+	return fmt.Sprintf("projects/%s/users/me/environments/%s", s.config.Project, env.GetEnvName())
 }
 
 // ConfigPath returns the path for the environment configuration

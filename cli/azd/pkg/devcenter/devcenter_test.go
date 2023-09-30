@@ -1,8 +1,14 @@
 package devcenter
 
 import (
+	"context"
 	"testing"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/azure/azure-dev/cli/azd/pkg/devcentersdk"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra"
+	"github.com/azure/azure-dev/cli/azd/pkg/infra/provisioning"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -95,4 +101,48 @@ func Test_MergeConfigs(t *testing.T) {
 		require.Equal(t, "CATALOG", mergedConfig.Catalog)
 		require.Equal(t, "ENVIRONMENT_TYPE", mergedConfig.EnvironmentType)
 	})
+}
+
+type mockDevCenterManager struct {
+	mock.Mock
+}
+
+func (m *mockDevCenterManager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]*devcentersdk.Project), args.Error(1)
+}
+
+func (m *mockDevCenterManager) WritableProjectsWithFilter(
+	ctx context.Context,
+	devCenterFilter DevCenterFilterPredicate,
+	projectFilter ProjectFilterPredicate,
+) ([]*devcentersdk.Project, error) {
+	args := m.Called(ctx, devCenterFilter, projectFilter)
+	return args.Get(0).([]*devcentersdk.Project), args.Error(1)
+}
+
+func (m *mockDevCenterManager) Deployment(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+	filter DeploymentFilterPredicate,
+) (infra.Deployment, error) {
+	args := m.Called(ctx, env, filter)
+	return args.Get(0).(infra.Deployment), args.Error(1)
+}
+
+func (m *mockDevCenterManager) LatestArmDeployment(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+	filter DeploymentFilterPredicate,
+) (*armresources.DeploymentExtended, error) {
+	args := m.Called(ctx, env, filter)
+	return args.Get(0).(*armresources.DeploymentExtended), args.Error(1)
+}
+
+func (m *mockDevCenterManager) Outputs(
+	ctx context.Context,
+	env *devcentersdk.Environment,
+) (map[string]provisioning.OutputParameter, error) {
+	args := m.Called(ctx, env)
+	return args.Get(0).(map[string]provisioning.OutputParameter), args.Error(1)
 }

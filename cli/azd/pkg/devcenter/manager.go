@@ -24,8 +24,36 @@ type ProjectFilterPredicate func(p *devcentersdk.Project) bool
 // DevCenterFilterPredicate is a predicate function for filtering dev centers
 type DevCenterFilterPredicate func(dc *devcentersdk.DevCenter) bool
 
+type Manager interface {
+	// WritableProjects gets a list of ADE projects that a user has write permissions
+	WritableProjects(ctx context.Context) ([]*devcentersdk.Project, error)
+	// WritableProjectsWithFilter gets a list of ADE projects that a user has write permissions for deployment
+	WritableProjectsWithFilter(
+		ctx context.Context,
+		devCenterFilter DevCenterFilterPredicate,
+		projectFilter ProjectFilterPredicate,
+	) ([]*devcentersdk.Project, error)
+	// Deployment gets the Resource Group scoped deployment for the specified devcenter environment
+	Deployment(
+		ctx context.Context,
+		env *devcentersdk.Environment,
+		filter DeploymentFilterPredicate,
+	) (infra.Deployment, error)
+	// LatestArmDeployment gets the latest ARM deployment for the specified devcenter environment
+	LatestArmDeployment(
+		ctx context.Context,
+		env *devcentersdk.Environment,
+		filter DeploymentFilterPredicate,
+	) (*armresources.DeploymentExtended, error)
+	// Outputs gets the outputs for the specified devcenter environment
+	Outputs(
+		ctx context.Context,
+		env *devcentersdk.Environment,
+	) (map[string]provisioning.OutputParameter, error)
+}
+
 // Manager provides a common set of methods for interactive with a devcenter and its environments
-type Manager struct {
+type manager struct {
 	config               *Config
 	client               devcentersdk.DevCenterClient
 	deploymentsService   azapi.Deployments
@@ -38,8 +66,8 @@ func NewManager(
 	client devcentersdk.DevCenterClient,
 	deploymentsService azapi.Deployments,
 	deploymentOperations azapi.DeploymentOperations,
-) *Manager {
-	return &Manager{
+) Manager {
+	return &manager{
 		config:               config,
 		client:               client,
 		deploymentsService:   deploymentsService,
@@ -48,7 +76,7 @@ func NewManager(
 }
 
 // WritableProjectsWithFilter gets a list of ADE projects that a user has write permissions for deployment
-func (m *Manager) WritableProjectsWithFilter(
+func (m *manager) WritableProjectsWithFilter(
 	ctx context.Context,
 	devCenterFilter DevCenterFilterPredicate,
 	projectFilter ProjectFilterPredicate,
@@ -82,7 +110,7 @@ func (m *Manager) WritableProjectsWithFilter(
 
 // Gets a list of ADE projects that a user has write permissions
 // Write permissions of a project allow the user to create new environment in the project
-func (m *Manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project, error) {
+func (m *manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project, error) {
 	devCenterList, err := m.client.DevCenters().Get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed getting dev centers: %w", err)
@@ -136,15 +164,30 @@ func (m *Manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project
 		close(errorsChan)
 	}()
 
-	writeableProjects := []*devcentersdk.Project{}
-	for project := range projectsChan {
-		writeableProjects = append(writeableProjects, project)
-	}
+	var doneGroup sync.WaitGroup
+	doneGroup.Add(2)
 
 	var allErrors error
-	for err := range errorsChan {
-		allErrors = multierr.Append(allErrors, err)
-	}
+	writeableProjects := []*devcentersdk.Project{}
+
+	go func() {
+		defer doneGroup.Done()
+
+		for project := range projectsChan {
+			writeableProjects = append(writeableProjects, project)
+		}
+	}()
+
+	go func() {
+		defer doneGroup.Done()
+
+		for err := range errorsChan {
+			allErrors = multierr.Append(allErrors, err)
+		}
+	}()
+
+	// Wait for all the projects and errors to be processed from channels
+	doneGroup.Wait()
 
 	if allErrors != nil {
 		return nil, allErrors
@@ -154,7 +197,7 @@ func (m *Manager) WritableProjects(ctx context.Context) ([]*devcentersdk.Project
 }
 
 // Deployment gets the Resource Group scoped deployment for the specified devcenter environment
-func (m *Manager) Deployment(
+func (m *manager) Deployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
 	filter DeploymentFilterPredicate,
@@ -180,7 +223,7 @@ func (m *Manager) Deployment(
 
 // LatestArmDeployment gets the latest ARM deployment for the specified devcenter environment
 // When a filter is applied the latest deployment that matches the filter will be returned
-func (m *Manager) LatestArmDeployment(
+func (m *manager) LatestArmDeployment(
 	ctx context.Context,
 	env *devcentersdk.Environment,
 	filter DeploymentFilterPredicate,
@@ -241,7 +284,7 @@ func (m *Manager) LatestArmDeployment(
 // Outputs gets the outputs for the latest deployment of the specified environment
 // Right now this will retrieve the outputs from the latest azure deployment
 // Long term this will call into ADE Outputs API
-func (m *Manager) Outputs(
+func (m *manager) Outputs(
 	ctx context.Context,
 	env *devcentersdk.Environment,
 ) (map[string]provisioning.OutputParameter, error) {

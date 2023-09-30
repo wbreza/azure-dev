@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
-	"github.com/azure/azure-dev/cli/azd/pkg/azsdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/convert"
 )
 
@@ -23,29 +21,28 @@ type DevCenterClient interface {
 }
 
 type devCenterClient struct {
-	credential azcore.TokenCredential
-	options    *azcore.ClientOptions
-	pipeline   runtime.Pipeline
-	cache      map[string]interface{}
-	endpoint   string
+	credential          azcore.TokenCredential
+	options             *azcore.ClientOptions
+	resourceGraphClient *armresourcegraph.Client
+	pipeline            runtime.Pipeline
+	cache               map[string]interface{}
+	endpoint            string
 }
 
 func NewDevCenterClient(
 	credential azcore.TokenCredential,
 	options *azcore.ClientOptions,
+	resourceGraphClient *armresourcegraph.Client,
 ) (DevCenterClient, error) {
-	if options == nil {
-		options = &azcore.ClientOptions{}
-	}
-
 	options.PerCallPolicies = append(options.PerCallPolicies, NewApiVersionPolicy(nil))
 	pipeline := NewPipeline(credential, ServiceConfig, options)
 
 	return &devCenterClient{
-		pipeline:   pipeline,
-		credential: credential,
-		options:    options,
-		cache:      map[string]interface{}{},
+		pipeline:            pipeline,
+		credential:          credential,
+		options:             options,
+		resourceGraphClient: resourceGraphClient,
+		cache:               map[string]interface{}{},
 	}, nil
 }
 
@@ -73,19 +70,13 @@ func (c *devCenterClient) projectList(ctx context.Context) ([]*Project, error) {
 	| where properties['provisioningState'] =~ 'Succeeded'
 	| project id, location, tenantId, name, properties, type
 	`
-	options := azsdk.DefaultClientOptionsBuilder(ctx, http.DefaultClient, "azd").BuildArmClientOptions()
-	resourceGraphClient, err := armresourcegraph.NewClient(c.credential, options)
-	if err != nil {
-		return nil, err
-	}
-
 	queryRequest := armresourcegraph.QueryRequest{
 		Query: &query,
 		Options: &armresourcegraph.QueryRequestOptions{
 			AllowPartialScopes: convert.RefOf(true),
 		},
 	}
-	res, err := resourceGraphClient.Resources(ctx, queryRequest, nil)
+	res, err := c.resourceGraphClient.Resources(ctx, queryRequest, nil)
 	if err != nil {
 		return nil, err
 	}

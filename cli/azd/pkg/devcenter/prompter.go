@@ -15,7 +15,7 @@ import (
 type Prompter struct {
 	config          *Config
 	console         input.Console
-	manager         *Manager
+	manager         Manager
 	devCenterClient devcentersdk.DevCenterClient
 }
 
@@ -23,7 +23,7 @@ type Prompter struct {
 func NewPrompter(
 	config *Config,
 	console input.Console,
-	manager *Manager,
+	manager Manager,
 	devCenterClient devcentersdk.DevCenterClient,
 ) *Prompter {
 	return &Prompter{
