@@ -224,3 +224,26 @@ func createTestServiceConfig(path string, host ServiceTargetKind, language Servi
 		EventDispatcher: ext.NewEventDispatcher[ServiceLifecycleEventArgs](),
 	}
 }
+
+func createTestProjectConfig() *ProjectConfig {
+	projectConfig := &ProjectConfig{
+		Name:            "Test-App",
+		Path:            ".",
+		EventDispatcher: ext.NewEventDispatcher[ProjectLifecycleEventArgs](),
+	}
+
+	apiService := createTestServiceConfig("src/api", ServiceTargetFake, ServiceLanguageFake)
+	apiService.Name = "api"
+	apiService.Project = projectConfig
+
+	webService := createTestServiceConfig("src/web", ServiceTargetFake, ServiceLanguageFake)
+	webService.Name = "web"
+	webService.Project = projectConfig
+
+	projectConfig.Services = map[string]*ServiceConfig{
+		"api": apiService,
+		"web": webService,
+	}
+
+	return projectConfig
+}
