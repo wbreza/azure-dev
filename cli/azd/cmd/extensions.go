@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
+	"github.com/azure/azure-dev/cli/azd/internal/azdgrpc"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
 	"github.com/azure/azure-dev/cli/azd/pkg/extensions"
@@ -95,6 +96,7 @@ type extensionAction struct {
 	commandRunner    exec.CommandRunner
 	lazyEnv          *lazy.Lazy[*environment.Environment]
 	extensionManager *extensions.Manager
+	azdServer        *azdgrpc.Server
 	cmd              *cobra.Command
 	args             []string
 }
@@ -105,6 +107,7 @@ func newExtensionAction(
 	lazyEnv *lazy.Lazy[*environment.Environment],
 	extensionManager *extensions.Manager,
 	cmd *cobra.Command,
+	azdServer *azdgrpc.Server,
 	args []string,
 ) actions.Action {
 	return &extensionAction{
@@ -112,6 +115,7 @@ func newExtensionAction(
 		commandRunner:    commandRunner,
 		lazyEnv:          lazyEnv,
 		extensionManager: extensionManager,
+		azdServer:        azdServer,
 		cmd:              cmd,
 		args:             args,
 	}
@@ -157,6 +161,13 @@ func (a *extensionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		return nil, fmt.Errorf("extension path was not found: %s: %w", extensionPath, err)
 	}
 
+	serverInfo, err := a.azdServer.Start()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start gRPC server: %w", err)
+	}
+
+	allEnv = append(allEnv, fmt.Sprintf("AZD_SERVER=%s", serverInfo.Address))
+
 	runArgs := exec.
 		NewRunArgs(extensionPath, a.args...).
 		WithCwd(cwd).
@@ -168,6 +179,10 @@ func (a *extensionAction) Run(ctx context.Context) (*actions.ActionResult, error
 	_, err = a.commandRunner.Run(ctx, runArgs)
 	if err != nil {
 		log.Printf("Failed to run extension %s: %v\n", extensionNamespace, err)
+	}
+
+	if err = a.azdServer.Stop(); err != nil {
+		log.Printf("Failed to stop gRPC server: %v\n", err)
 	}
 
 	return nil, nil

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+    <metadata>
+        <id>Microsoft.Azd.Ai</id>
+        <version>1.2.3</version>
+        <authors>Wallace Breza, John Smith</authors>
+        <owners>Microsoft</owners>
+        <title>AI Core Extension</title>
+        <summary>This extension provides capabilities to streamline various AI development tasks.</summary>
+        <description>
+            ## AI setup
+            Initialize AI capabilities for your app.
+
+            `azd ai setup`
+
+            ## AI evaluate flow
+            Evaluate the flow of your AI model.
+
+            `azd ai evaluate flow`
+
+            ## AI chat
+            Chat with your AI model
+
+            `azd ai chat`
+        </description>
+        <requireLicenseAcceptance>false</requireLicenseAcceptance>
+        <tags>azd ai extension</tags>
+    </metadata>
+    <files>
+        <file src="README.md" target="README.md" />
+        <!-- Platform-specific binary artifacts -->
+        <file src="bin/azd-ext-ai-windows-amd64.exe" target="bin/azd-ext-ai-windows-amd64.exe" />
+        <file src="bin/azd-ext-ai-darwin-amd64" target="bin/azd-ext-ai-darwin-amd64" />
+        <file src="bin/azd-ext-ai-linux-amd64" target="bin/azd-ext-ai-linux-amd64" />
+    </files>
+</package>

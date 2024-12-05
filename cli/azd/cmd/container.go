@@ -18,6 +18,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/cmd/actions"
 	"github.com/azure/azure-dev/cli/azd/cmd/middleware"
 	"github.com/azure/azure-dev/cli/azd/internal"
+	"github.com/azure/azure-dev/cli/azd/internal/azdgrpc"
 	"github.com/azure/azure-dev/cli/azd/internal/cmd"
 	"github.com/azure/azure-dev/cli/azd/internal/repository"
 	"github.com/azure/azure-dev/cli/azd/pkg/account"
@@ -26,6 +27,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azd"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk/storage"
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
@@ -790,6 +792,13 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// Extensions
 	container.MustRegisterSingleton(extensions.NewManager)
 	container.MustRegisterSingleton(extensions.NewSourceManager)
+
+	// gRPC Server
+	container.MustRegisterScoped(azdgrpc.NewServer)
+	container.MustRegisterScoped(azdgrpc.NewEnvironmentService)
+	container.MustRegisterScoped(azdgrpc.NewGreeterServer)
+	container.MustRegisterScoped(azdgrpc.NewPromptService)
+	container.MustRegisterSingleton(azdext.NewPromptService)
 
 	// Required for nested actions called from composite actions like 'up'
 	registerAction[*cmd.ProvisionAction](container, "azd-provision-action")

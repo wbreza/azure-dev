@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package azdext;
+
+option go_package = "gen/grpc;azdext";
+
+// EnvironmentService defines methods for managing environments and their key-value pairs.
+service EnvironmentService {
+  // Gets the current environment.
+  rpc GetCurrent(Empty) returns (EnvironmentResponse);
+
+  // Get retrieves an environment by its name.
+  rpc Get (GetEnvironmentRequest) returns (EnvironmentResponse);
+
+  // GetValues retrieves all key-value pairs in the specified environment.
+  rpc GetValues (GetEnvironmentRequest) returns (KeyValueListResponse);
+
+  // GetValue retrieves the value of a specific key in the specified environment.
+  rpc GetValue (GetEnvRequest) returns (KeyValueResponse);
+
+  // SetValue sets the value of a key in the specified environment.
+  rpc SetValue (SetEnvRequest) returns (Empty);
+}
+
+// Messages for requests and responses
+
+// Empty message for methods with no output.
+message Empty {}
+
+// Request to retrieve an environment by name.
+message GetEnvironmentRequest {
+  string name = 1; // Name of the environment.
+}
+
+// Request to retrieve a specific key-value pair.
+message GetEnvRequest {
+  string env_name = 1; // Name of the environment.
+  string key = 2;      // Key to retrieve.
+}
+
+// Request to set a key-value pair.
+message SetEnvRequest {
+  string env_name = 1; // Name of the environment.
+  string key = 2;      // Key to set.
+  string value = 3;    // Value to set for the key.
+}
+
+// Response containing details of an environment.
+message EnvironmentResponse {
+  Environment environment = 1; // Environment details.
+}
+
+// Response containing a list of key-value pairs.
+message KeyValueListResponse {
+  repeated KeyValue key_values = 1; // List of key-value pairs.
+}
+
+// Response containing a single key-value pair.
+message KeyValueResponse {
+  string key = 1;   // Key name.
+  string value = 2; // Value associated with the key.
+}
+
+// Environment object definition.
+message Environment {
+  string name = 1; // Name of the environment.
+}
+
+// Key-value pair definition.
+message KeyValue {
+  string key = 1;   // Key name.
+  string value = 2; // Value associated with the key.
+}

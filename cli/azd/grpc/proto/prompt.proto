@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package azdext;
+
+option go_package = "gen/grpc;azdext";
+
+service PromptService {
+  // RPC for PromptSubscription
+  rpc PromptSubscription (PromptSubscriptionRequest) returns (SubscriptionResponse);
+}
+
+// Message representing the SelectOptions
+message PromptSubscriptionRequest {
+  string creatingMessage = 1;
+  string message = 2;
+  string helpMessage = 3;
+  string loadingMessage = 4;
+  bool displayNumbers = 5;
+  int32 displayCount = 6;
+}
+
+// Message representing a Subscription
+message Subscription {
+  string id = 1;
+  string name = 2;
+  string tenantId = 3;
+  string userAccessTenant_id = 4;
+  bool isDefault = 5;
+}
+
+// Response message containing a Subscription
+message SubscriptionResponse {
+  Subscription subscription = 1;
+}
