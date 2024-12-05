@@ -4,7 +4,7 @@
 // - protoc             v5.29.1
 // source: prompt.proto
 
-package azdext
+package azdprompt
 
 import (
 	context "context"
@@ -19,7 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PromptService_PromptSubscription_FullMethodName = "/azdext.PromptService/PromptSubscription"
+	PromptService_PromptSubscription_FullMethodName = "/azdprompt.PromptService/PromptSubscription"
 )
 
 // PromptServiceClient is the client API for PromptService service.
@@ -110,7 +110,7 @@ func _PromptService_PromptSubscription_Handler(srv interface{}, ctx context.Cont
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PromptService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "azdext.PromptService",
+	ServiceName: "azdprompt.PromptService",
 	HandlerType: (*PromptServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

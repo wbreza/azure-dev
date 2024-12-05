@@ -5,7 +5,9 @@ import (
 	"log"
 	"net"
 
-	azdext "github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/grpc"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdconfig"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdenv"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdprompt"
 	"google.golang.org/grpc"
 )
 
@@ -16,20 +18,20 @@ type ServerInfo struct {
 
 type Server struct {
 	grpcServer         *grpc.Server
-	greeterService     azdext.GreeterServer
-	environmentService azdext.EnvironmentServiceServer
-	promptService      azdext.PromptServiceServer
+	environmentService azdenv.EnvironmentServiceServer
+	promptService      azdprompt.PromptServiceServer
+	userConfigService  azdconfig.UserConfigServiceServer
 }
 
 func NewServer(
-	greeterService azdext.GreeterServer,
-	environmentService azdext.EnvironmentServiceServer,
-	promptService azdext.PromptServiceServer,
+	environmentService azdenv.EnvironmentServiceServer,
+	promptService azdprompt.PromptServiceServer,
+	userConfigService azdconfig.UserConfigServiceServer,
 ) *Server {
 	return &Server{
-		greeterService:     greeterService,
 		environmentService: environmentService,
 		promptService:      promptService,
+		userConfigService:  userConfigService,
 		grpcServer:         grpc.NewServer(),
 	}
 }
@@ -45,9 +47,9 @@ func (s *Server) Start() (*ServerInfo, error) {
 	randomPort := listener.Addr().(*net.TCPAddr).Port
 
 	// Register the Greeter service with the gRPC server
-	azdext.RegisterGreeterServer(s.grpcServer, s.greeterService)
-	azdext.RegisterEnvironmentServiceServer(s.grpcServer, s.environmentService)
-	azdext.RegisterPromptServiceServer(s.grpcServer, s.promptService)
+	azdenv.RegisterEnvironmentServiceServer(s.grpcServer, s.environmentService)
+	azdprompt.RegisterPromptServiceServer(s.grpcServer, s.promptService)
+	azdconfig.RegisterUserConfigServiceServer(s.grpcServer, s.userConfigService)
 
 	go func() {
 		// Start the gRPC server

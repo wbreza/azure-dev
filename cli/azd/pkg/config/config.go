@@ -210,6 +210,10 @@ func (c *config) Unset(path string) error {
 // Gets the value stored at the specified location
 // Returns the value if exists, otherwise returns nil & a value indicating if the value existing
 func (c *config) Get(path string) (any, bool) {
+	if path == "" {
+		return c.data, true
+	}
+
 	depth := 1
 	currentNode := c.data
 	parts := strings.Split(path, ".")

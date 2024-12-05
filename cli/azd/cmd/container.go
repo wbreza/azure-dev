@@ -27,7 +27,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/auth"
 	"github.com/azure/azure-dev/cli/azd/pkg/azapi"
 	"github.com/azure/azure-dev/cli/azd/pkg/azd"
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk"
 	"github.com/azure/azure-dev/cli/azd/pkg/azsdk/storage"
 	"github.com/azure/azure-dev/cli/azd/pkg/cloud"
@@ -789,6 +788,8 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	})
 	container.MustRegisterSingleton(workflow.NewRunner)
 
+	container.MustRegisterSingleton(prompt.NewPromptService)
+
 	// Extensions
 	container.MustRegisterSingleton(extensions.NewManager)
 	container.MustRegisterSingleton(extensions.NewSourceManager)
@@ -796,9 +797,8 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 	// gRPC Server
 	container.MustRegisterScoped(azdgrpc.NewServer)
 	container.MustRegisterScoped(azdgrpc.NewEnvironmentService)
-	container.MustRegisterScoped(azdgrpc.NewGreeterServer)
 	container.MustRegisterScoped(azdgrpc.NewPromptService)
-	container.MustRegisterSingleton(azdext.NewPromptService)
+	container.MustRegisterSingleton(azdgrpc.NewUserConfigService)
 
 	// Required for nested actions called from composite actions like 'up'
 	registerAction[*cmd.ProvisionAction](container, "azd-provision-action")

@@ -3,29 +3,29 @@ package azdgrpc
 import (
 	"context"
 
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
-	gengrpc "github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/grpc"
+	azdprompt "github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdprompt"
+	"github.com/azure/azure-dev/cli/azd/pkg/prompt"
 )
 
 type promptService struct {
-	gengrpc.UnimplementedPromptServiceServer
-	prompter *azdext.PromptService
+	azdprompt.UnimplementedPromptServiceServer
+	prompter *prompt.PromptService
 }
 
-func NewPromptService(prompter *azdext.PromptService) gengrpc.PromptServiceServer {
+func NewPromptService(prompter *prompt.PromptService) azdprompt.PromptServiceServer {
 	return &promptService{
 		prompter: prompter,
 	}
 }
 
-func (s *promptService) PromptSubscription(ctx context.Context, req *gengrpc.PromptSubscriptionRequest) (*gengrpc.SubscriptionResponse, error) {
+func (s *promptService) PromptSubscription(ctx context.Context, req *azdprompt.PromptSubscriptionRequest) (*azdprompt.SubscriptionResponse, error) {
 	selectedSubscription, err := s.prompter.PromptSubscription(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return &gengrpc.SubscriptionResponse{
-		Subscription: &gengrpc.Subscription{
+	return &azdprompt.SubscriptionResponse{
+		Subscription: &azdprompt.Subscription{
 			Id:                 selectedSubscription.Id,
 			Name:               selectedSubscription.Name,
 			TenantId:           selectedSubscription.TenantId,

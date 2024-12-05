@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package azdext;
+package azdprompt;
 
-option go_package = "gen/grpc;azdext";
+option go_package = "gen/azdprompt;azdprompt";
 
 service PromptService {
   // RPC for PromptSubscription

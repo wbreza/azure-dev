@@ -1,4 +1,4 @@
-package azdext
+package prompt
 
 import (
 	"context"

@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-package azdext;
+package azdenv;
 
-option go_package = "gen/grpc;azdext";
+option go_package = "gen/azdenv;azdenv";
 
 // EnvironmentService defines methods for managing environments and their key-value pairs.
 service EnvironmentService {
   // Gets the current environment.
-  rpc GetCurrent(Empty) returns (EnvironmentResponse);
+  rpc GetCurrent(EmptyResponse) returns (EnvironmentResponse);
 
   // Get retrieves an environment by its name.
   rpc Get (GetEnvironmentRequest) returns (EnvironmentResponse);
@@ -19,13 +19,28 @@ service EnvironmentService {
   rpc GetValue (GetEnvRequest) returns (KeyValueResponse);
 
   // SetValue sets the value of a key in the specified environment.
-  rpc SetValue (SetEnvRequest) returns (Empty);
+  rpc SetValue (SetEnvRequest) returns (EmptyResponse);
+
+  // RPC for getting a config value by path
+  rpc GetConfig (GetConfigRequest) returns (GetConfigResponse);
+
+  // RPC for getting a config value as a string by path
+  rpc GetConfigString (GetConfigStringRequest) returns (GetConfigStringResponse);
+
+  // RPC for getting a config section by path
+  rpc GetConfigSection (GetConfigSectionRequest) returns (GetConfigSectionResponse);
+
+  // RPC for setting a config value at a given path
+  rpc SetConfig (SetConfigRequest) returns (EmptyResponse);
+
+  // RPC for unsetting a config value at a given path
+  rpc UnsetConfig (UnsetConfigRequest) returns (EmptyResponse);
 }
 
 // Messages for requests and responses
 
-// Empty message for methods with no output.
-message Empty {}
+// EmptyResponse message for methods with no output.
+message EmptyResponse {}
 
 // Request to retrieve an environment by name.
 message GetEnvironmentRequest {
@@ -70,4 +85,48 @@ message Environment {
 message KeyValue {
   string key = 1;   // Key name.
   string value = 2; // Value associated with the key.
+}
+
+// Request message for Get
+message GetConfigRequest {
+  string path = 1;
+}
+
+// Response message for Get
+message GetConfigResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+// Request message for GetString
+message GetConfigStringRequest {
+  string path = 1;
+}
+
+// Response message for GetString
+message GetConfigStringResponse {
+  string value = 1;
+  bool found = 2;
+}
+
+// Request message for GetSection
+message GetConfigSectionRequest {
+  string path = 1;
+}
+
+// Response message for GetSection
+message GetConfigSectionResponse {
+  bytes section = 1;
+  bool found = 2;
+}
+
+// Request message for Set
+message SetConfigRequest {
+  string path = 1;
+  bytes value = 2;
+}
+
+// Request message for Unset
+message UnsetConfigRequest {
+  string path = 1;
 }
