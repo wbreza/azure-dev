@@ -148,7 +148,7 @@ func (p *DefaultPrompter) PromptResourceGroup(ctx context.Context) (string, erro
 		return "", fmt.Errorf("prompting for resource group name: %w", err)
 	}
 
-	err = p.resourceService.CreateOrUpdateResourceGroup(ctx, p.env.GetSubscriptionId(), name, p.env.GetLocation(),
+	_, err = p.resourceService.CreateOrUpdateResourceGroup(ctx, p.env.GetSubscriptionId(), name, p.env.GetLocation(),
 		map[string]*string{
 			azure.TagKeyAzdEnvName: to.Ptr(p.env.Name()),
 		},

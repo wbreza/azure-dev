@@ -5,12 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdconfig"
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdenv"
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdprompt"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -23,32 +19,63 @@ func NewRootCommand() *cobra.Command {
 			ctx := cmd.Context()
 			fmt.Println("Start AI command")
 
-			azdServerAddress := os.Getenv("AZD_SERVER")
-			conn, err := grpc.NewClient(azdServerAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			azdClient, err := azdext.NewAzdClient(os.Getenv("AZD_SERVER"))
 			if err != nil {
-				return fmt.Errorf("failed to connect to server: %v", err)
+				return fmt.Errorf("failed to create azd client: %v", err)
 			}
 
-			defer conn.Close()
+			defer azdClient.Close()
 
-			promptClient := azdprompt.NewPromptServiceClient(conn)
-			selectedSubscriptionReply, err := promptClient.PromptSubscription(ctx, nil)
+			azureContext := &azdext.AzureContext{
+				Scope: &azdext.AzureScope{},
+			}
+
+			selectedSubscriptionReply, err := azdClient.Prompt().PromptSubscription(ctx, nil)
 			if err != nil {
 				return fmt.Errorf("failed to prompt subscription: %v", err)
 			}
 
+			azureContext.Scope.SubscriptionId = selectedSubscriptionReply.Subscription.Id
+
 			fmt.Println("Selected subscription: ", selectedSubscriptionReply.Subscription.Name)
 
-			envClient := azdenv.NewEnvironmentServiceClient(conn)
-			currentEnvReply, err := envClient.GetCurrent(ctx, &azdenv.EmptyResponse{})
+			selectedLocationReply, err := azdClient.Prompt().PromptLocation(ctx, &azdext.PromptLocationRequest{
+				AzureContext: azureContext,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to prompt location: %v", err)
+			}
+
+			azureContext.Scope.Location = selectedLocationReply.Location.Name
+
+			fmt.Println("Selected location: ", selectedLocationReply.Location.Name)
+
+			selectedResourceGroupReply, err := azdClient.Prompt().PromptResourceGroup(ctx, &azdext.PromptResourceGroupRequest{
+				AzureContext: azureContext,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to prompt resource group: %v", err)
+			}
+
+			azureContext.Scope.ResourceGroup = selectedResourceGroupReply.ResourceGroup.Name
+
+			fmt.Println("Selected resource group: ", selectedResourceGroupReply.ResourceGroup.Name)
+
+			projectReply, err := azdClient.Project().Get(ctx, &azdext.EmptyRequest{})
+			if err != nil {
+				return fmt.Errorf("failed to get project: %v", err)
+			}
+
+			fmt.Println("Project: ", projectReply.Project.Name)
+
+			currentEnvReply, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyResponse{})
 			if err != nil {
 				return fmt.Errorf("failed to get current environment: %v", err)
 			}
 
 			fmt.Println("Current environment: ", currentEnvReply.Environment.Name)
 
-			userConfigClient := azdconfig.NewUserConfigServiceClient(conn)
-			rootConfigReply, err := userConfigClient.Get(ctx, &azdconfig.GetRequest{Path: ""})
+			rootConfigReply, err := azdClient.UserConfig().Get(ctx, &azdext.GetRequest{Path: ""})
 			if err != nil {
 				return fmt.Errorf("failed to get root config: %v", err)
 			}
@@ -65,14 +92,14 @@ func NewRootCommand() *cobra.Command {
 
 			fmt.Println("Root config: \n", string(rootConfigJsonBytes))
 
-			testGetString, err := userConfigClient.GetString(ctx, &azdconfig.GetStringRequest{Path: "extensions.ai.displayName"})
+			testGetString, err := azdClient.UserConfig().GetString(ctx, &azdext.GetStringRequest{Path: "extensions.ai.displayName"})
 			if err != nil {
 				return fmt.Errorf("failed to get string: %v", err)
 			}
 
 			fmt.Println("Test get string: ", testGetString.Value)
 
-			values, err := envClient.GetValues(ctx, &azdenv.GetEnvironmentRequest{Name: currentEnvReply.Environment.Name})
+			values, err := azdClient.Environment().GetValues(ctx, &azdext.GetEnvironmentRequest{Name: currentEnvReply.Environment.Name})
 			if err != nil {
 				return fmt.Errorf("failed to get environment values: %v", err)
 			}
@@ -81,22 +108,26 @@ func NewRootCommand() *cobra.Command {
 				fmt.Printf("%s=%s\n", kv.Key, kv.Value)
 			}
 
-			envConfigReply, err := envClient.GetConfigSection(ctx, &azdenv.GetConfigSectionRequest{Path: "ai"})
+			envConfigReply, err := azdClient.Environment().GetConfigSection(ctx, &azdext.GetConfigSectionRequest{Path: "ai"})
 			if err != nil {
 				return fmt.Errorf("failed to get environment config: %v", err)
 			}
 
-			var envConfig map[string]interface{}
-			if err := json.Unmarshal(envConfigReply.Section, &envConfig); err != nil {
-				return fmt.Errorf("failed to unmarshal environment config: %v", err)
-			}
+			if envConfigReply.Found {
+				var envConfig map[string]interface{}
+				if err := json.Unmarshal(envConfigReply.Section, &envConfig); err != nil {
+					return fmt.Errorf("failed to unmarshal environment config: %v", err)
+				}
 
-			jsonBytes, err := json.MarshalIndent(envConfig, "", "  ")
-			if err != nil {
-				return fmt.Errorf("failed to marshal environment config: %v", err)
-			}
+				jsonBytes, err := json.MarshalIndent(envConfig, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to marshal environment config: %v", err)
+				}
 
-			fmt.Println("Environment config: ", string(jsonBytes))
+				fmt.Println("Environment config: ", string(jsonBytes))
+			} else {
+				fmt.Println("Environment config not found")
+			}
 
 			return nil
 		},

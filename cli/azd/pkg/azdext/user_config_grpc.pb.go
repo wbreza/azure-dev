@@ -4,7 +4,7 @@
 // - protoc             v5.29.1
 // source: user_config.proto
 
-package azdconfig
+package azdext
 
 import (
 	context "context"
@@ -19,11 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	UserConfigService_Get_FullMethodName        = "/azdconfig.UserConfigService/Get"
-	UserConfigService_GetString_FullMethodName  = "/azdconfig.UserConfigService/GetString"
-	UserConfigService_GetSection_FullMethodName = "/azdconfig.UserConfigService/GetSection"
-	UserConfigService_Set_FullMethodName        = "/azdconfig.UserConfigService/Set"
-	UserConfigService_Unset_FullMethodName      = "/azdconfig.UserConfigService/Unset"
+	UserConfigService_Get_FullMethodName        = "/azdext.UserConfigService/Get"
+	UserConfigService_GetString_FullMethodName  = "/azdext.UserConfigService/GetString"
+	UserConfigService_GetSection_FullMethodName = "/azdext.UserConfigService/GetSection"
+	UserConfigService_Set_FullMethodName        = "/azdext.UserConfigService/Set"
+	UserConfigService_Unset_FullMethodName      = "/azdext.UserConfigService/Unset"
 )
 
 // UserConfigServiceClient is the client API for UserConfigService service.
@@ -254,7 +254,7 @@ func _UserConfigService_Unset_Handler(srv interface{}, ctx context.Context, dec 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var UserConfigService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "azdconfig.UserConfigService",
+	ServiceName: "azdext.UserConfigService",
 	HandlerType: (*UserConfigServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

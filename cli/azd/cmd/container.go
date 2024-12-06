@@ -796,6 +796,7 @@ func registerCommonDependencies(container *ioc.NestedContainer) {
 
 	// gRPC Server
 	container.MustRegisterScoped(azdgrpc.NewServer)
+	container.MustRegisterScoped(azdgrpc.NewProjectService)
 	container.MustRegisterScoped(azdgrpc.NewEnvironmentService)
 	container.MustRegisterScoped(azdgrpc.NewPromptService)
 	container.MustRegisterSingleton(azdgrpc.NewUserConfigService)

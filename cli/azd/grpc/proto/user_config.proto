@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package azdconfig;
+package azdext;
 
-option go_package = "gen/azdconfig;azdconfig";
+option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext/gen;azdext";
 
 // import "google/protobuf/struct.proto"; (removed due to import error)
 

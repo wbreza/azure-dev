@@ -1,16 +1,23 @@
 syntax = "proto3";
 
-package azdenv;
+package azdext;
 
-option go_package = "gen/azdenv;azdenv";
+option go_package = "github.com/azure/azure-dev/cli/azd/pkg/azdext/gen;azdext";
+
+import "models.proto";
 
 // EnvironmentService defines methods for managing environments and their key-value pairs.
 service EnvironmentService {
   // Gets the current environment.
   rpc GetCurrent(EmptyResponse) returns (EnvironmentResponse);
 
+  rpc List(EmptyRequest) returns (EnvironmentListResponse);
+
   // Get retrieves an environment by its name.
   rpc Get (GetEnvironmentRequest) returns (EnvironmentResponse);
+
+  // Select sets the current environment to the specified environment.
+  rpc Select (SelectEnvironmentRequest) returns (EmptyResponse);
 
   // GetValues retrieves all key-value pairs in the specified environment.
   rpc GetValues (GetEnvironmentRequest) returns (KeyValueListResponse);
@@ -37,13 +44,12 @@ service EnvironmentService {
   rpc UnsetConfig (UnsetConfigRequest) returns (EmptyResponse);
 }
 
-// Messages for requests and responses
-
-// EmptyResponse message for methods with no output.
-message EmptyResponse {}
-
 // Request to retrieve an environment by name.
 message GetEnvironmentRequest {
+  string name = 1; // Name of the environment.
+}
+
+message SelectEnvironmentRequest {
   string name = 1; // Name of the environment.
 }
 
@@ -65,6 +71,10 @@ message EnvironmentResponse {
   Environment environment = 1; // Environment details.
 }
 
+message EnvironmentListResponse {
+  repeated EnvironmentDescription environments = 1; // List of environments.
+}
+
 // Response containing a list of key-value pairs.
 message KeyValueListResponse {
   repeated KeyValue key_values = 1; // List of key-value pairs.
@@ -79,6 +89,13 @@ message KeyValueResponse {
 // Environment object definition.
 message Environment {
   string name = 1; // Name of the environment.
+}
+
+message EnvironmentDescription {
+  string name = 1; // Name of the environment.
+  bool local = 2; // Whether the environment is local.
+  bool remote = 3; // Whether the environment is remote.
+  bool default = 4; // Whether the environment is the default.
 }
 
 // Key-value pair definition.

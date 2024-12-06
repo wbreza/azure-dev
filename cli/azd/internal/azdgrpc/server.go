@@ -5,9 +5,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdconfig"
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdenv"
-	"github.com/azure/azure-dev/cli/azd/pkg/azdext/gen/azdprompt"
+	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"google.golang.org/grpc"
 )
 
@@ -18,17 +16,20 @@ type ServerInfo struct {
 
 type Server struct {
 	grpcServer         *grpc.Server
-	environmentService azdenv.EnvironmentServiceServer
-	promptService      azdprompt.PromptServiceServer
-	userConfigService  azdconfig.UserConfigServiceServer
+	projectService     azdext.ProjectServiceServer
+	environmentService azdext.EnvironmentServiceServer
+	promptService      azdext.PromptServiceServer
+	userConfigService  azdext.UserConfigServiceServer
 }
 
 func NewServer(
-	environmentService azdenv.EnvironmentServiceServer,
-	promptService azdprompt.PromptServiceServer,
-	userConfigService azdconfig.UserConfigServiceServer,
+	projectService azdext.ProjectServiceServer,
+	environmentService azdext.EnvironmentServiceServer,
+	promptService azdext.PromptServiceServer,
+	userConfigService azdext.UserConfigServiceServer,
 ) *Server {
 	return &Server{
+		projectService:     projectService,
 		environmentService: environmentService,
 		promptService:      promptService,
 		userConfigService:  userConfigService,
@@ -47,9 +48,10 @@ func (s *Server) Start() (*ServerInfo, error) {
 	randomPort := listener.Addr().(*net.TCPAddr).Port
 
 	// Register the Greeter service with the gRPC server
-	azdenv.RegisterEnvironmentServiceServer(s.grpcServer, s.environmentService)
-	azdprompt.RegisterPromptServiceServer(s.grpcServer, s.promptService)
-	azdconfig.RegisterUserConfigServiceServer(s.grpcServer, s.userConfigService)
+	azdext.RegisterProjectServiceServer(s.grpcServer, s.projectService)
+	azdext.RegisterEnvironmentServiceServer(s.grpcServer, s.environmentService)
+	azdext.RegisterPromptServiceServer(s.grpcServer, s.promptService)
+	azdext.RegisterUserConfigServiceServer(s.grpcServer, s.userConfigService)
 
 	go func() {
 		// Start the gRPC server
