@@ -48,6 +48,21 @@ func (p *DefaultPlatform) ConfigureContainer(container *ioc.NestedContainer) err
 	container.MustRegisterSingleton(terraform.NewCli)
 	container.MustRegisterSingleton(bicep.NewCli)
 
+	container.MustRegisterTransient(func() (*infraBicep.BicepProvider, error) {
+		var provider provisioning.Provider
+		if err := container.ResolveNamed(string(provisioning.Bicep), &provider); err != nil {
+			return nil, err
+		}
+
+		bicepProvider, ok := provider.(*infraBicep.BicepProvider)
+		if !ok {
+			return nil, fmt.Errorf("unexpected provider type: %T", provider)
+		}
+
+		return bicepProvider, nil
+	})
+	container.MustRegisterTransient(infraBicep.NewBicepProvider)
+
 	// Provisioning Providers
 	provisionProviderMap := map[provisioning.ProviderKind]any{
 		provisioning.Bicep:     infraBicep.NewBicepProvider,

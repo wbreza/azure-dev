@@ -8,18 +8,18 @@ import (
 )
 
 type AzdClient struct {
-	serverAddress     string
 	connection        *grpc.ClientConn
 	projectClient     ProjectServiceClient
 	environmentClient EnvironmentServiceClient
 	userConfigClient  UserConfigServiceClient
 	promptClient      PromptServiceClient
+	deploymentClient  DeploymentServiceClient
 }
 
 func NewAzdClient(serverAddress string) (*AzdClient, error) {
 	connection, err := grpc.NewClient(serverAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to server: %v", err)
+		return nil, fmt.Errorf("failed to connect to server: %w", err)
 	}
 
 	return &AzdClient{
@@ -61,4 +61,12 @@ func (c *AzdClient) Prompt() PromptServiceClient {
 	}
 
 	return c.promptClient
+}
+
+func (c *AzdClient) Deployment() DeploymentServiceClient {
+	if c.deploymentClient == nil {
+		c.deploymentClient = NewDeploymentServiceClient(c.connection)
+	}
+
+	return c.deploymentClient
 }

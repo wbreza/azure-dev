@@ -139,7 +139,7 @@ func (p *printer) Fprintf(format string, a ...any) {
 }
 
 func (p *printer) Fprintln(a ...any) {
-	p.Fprintf(fmt.Sprintln(a...))
+	p.Fprintf("%s\n", fmt.Sprint(a...))
 }
 
 func (p *printer) ClearCanvas() {

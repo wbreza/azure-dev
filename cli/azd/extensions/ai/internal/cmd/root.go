@@ -21,18 +21,21 @@ func NewRootCommand() *cobra.Command {
 
 			azdClient, err := azdext.NewAzdClient(os.Getenv("AZD_SERVER"))
 			if err != nil {
-				return fmt.Errorf("failed to create azd client: %v", err)
+				return fmt.Errorf("failed to create azd client: %w", err)
 			}
 
 			defer azdClient.Close()
 
-			azureContext := &azdext.AzureContext{
-				Scope: &azdext.AzureScope{},
+			deploymentContextReply, err := azdClient.Deployment().GetDeploymentContext(ctx, &azdext.EmptyRequest{})
+			if err != nil {
+				return fmt.Errorf("failed to get deployment context: %w", err)
 			}
+
+			azureContext := deploymentContextReply.AzureContext
 
 			selectedSubscriptionReply, err := azdClient.Prompt().PromptSubscription(ctx, nil)
 			if err != nil {
-				return fmt.Errorf("failed to prompt subscription: %v", err)
+				return fmt.Errorf("failed to prompt subscription: %w", err)
 			}
 
 			azureContext.Scope.SubscriptionId = selectedSubscriptionReply.Subscription.Id
@@ -43,18 +46,19 @@ func NewRootCommand() *cobra.Command {
 				AzureContext: azureContext,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to prompt location: %v", err)
+				return fmt.Errorf("failed to prompt location: %w", err)
 			}
 
 			azureContext.Scope.Location = selectedLocationReply.Location.Name
 
 			fmt.Println("Selected location: ", selectedLocationReply.Location.Name)
 
-			selectedResourceGroupReply, err := azdClient.Prompt().PromptResourceGroup(ctx, &azdext.PromptResourceGroupRequest{
-				AzureContext: azureContext,
-			})
+			selectedResourceGroupReply, err := azdClient.Prompt().
+				PromptResourceGroup(ctx, &azdext.PromptResourceGroupRequest{
+					AzureContext: azureContext,
+				})
 			if err != nil {
-				return fmt.Errorf("failed to prompt resource group: %v", err)
+				return fmt.Errorf("failed to prompt resource group: %w", err)
 			}
 
 			azureContext.Scope.ResourceGroup = selectedResourceGroupReply.ResourceGroup.Name
@@ -63,45 +67,47 @@ func NewRootCommand() *cobra.Command {
 
 			projectReply, err := azdClient.Project().Get(ctx, &azdext.EmptyRequest{})
 			if err != nil {
-				return fmt.Errorf("failed to get project: %v", err)
+				return fmt.Errorf("failed to get project: %w", err)
 			}
 
 			fmt.Println("Project: ", projectReply.Project.Name)
 
 			currentEnvReply, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyResponse{})
 			if err != nil {
-				return fmt.Errorf("failed to get current environment: %v", err)
+				return fmt.Errorf("failed to get current environment: %w", err)
 			}
 
 			fmt.Println("Current environment: ", currentEnvReply.Environment.Name)
 
 			rootConfigReply, err := azdClient.UserConfig().Get(ctx, &azdext.GetRequest{Path: ""})
 			if err != nil {
-				return fmt.Errorf("failed to get root config: %v", err)
+				return fmt.Errorf("failed to get root config: %w", err)
 			}
 
 			var rootConfig map[string]interface{}
 			if err := json.Unmarshal(rootConfigReply.Value, &rootConfig); err != nil {
-				return fmt.Errorf("failed to unmarshal root config: %v", err)
+				return fmt.Errorf("failed to unmarshal root config: %w", err)
 			}
 
 			rootConfigJsonBytes, err := json.MarshalIndent(rootConfig, "", "  ")
 			if err != nil {
-				return fmt.Errorf("failed to marshal root config: %v", err)
+				return fmt.Errorf("failed to marshal root config: %w", err)
 			}
 
 			fmt.Println("Root config: \n", string(rootConfigJsonBytes))
 
-			testGetString, err := azdClient.UserConfig().GetString(ctx, &azdext.GetStringRequest{Path: "extensions.ai.displayName"})
+			testGetString, err := azdClient.UserConfig().
+				GetString(ctx, &azdext.GetStringRequest{Path: "extensions.ai.displayName"})
 			if err != nil {
-				return fmt.Errorf("failed to get string: %v", err)
+				return fmt.Errorf("failed to get string: %w", err)
 			}
 
 			fmt.Println("Test get string: ", testGetString.Value)
 
-			values, err := azdClient.Environment().GetValues(ctx, &azdext.GetEnvironmentRequest{Name: currentEnvReply.Environment.Name})
+			values, err := azdClient.Environment().
+				GetValues(ctx, &azdext.GetEnvironmentRequest{Name: currentEnvReply.Environment.Name})
 			if err != nil {
-				return fmt.Errorf("failed to get environment values: %v", err)
+				return fmt.Errorf("failed to get environment values: %w", err)
 			}
 
 			for _, kv := range values.KeyValues {
@@ -110,18 +116,18 @@ func NewRootCommand() *cobra.Command {
 
 			envConfigReply, err := azdClient.Environment().GetConfigSection(ctx, &azdext.GetConfigSectionRequest{Path: "ai"})
 			if err != nil {
-				return fmt.Errorf("failed to get environment config: %v", err)
+				return fmt.Errorf("failed to get environment config: %w", err)
 			}
 
 			if envConfigReply.Found {
 				var envConfig map[string]interface{}
 				if err := json.Unmarshal(envConfigReply.Section, &envConfig); err != nil {
-					return fmt.Errorf("failed to unmarshal environment config: %v", err)
+					return fmt.Errorf("failed to unmarshal environment config: %w", err)
 				}
 
 				jsonBytes, err := json.MarshalIndent(envConfig, "", "  ")
 				if err != nil {
-					return fmt.Errorf("failed to marshal environment config: %v", err)
+					return fmt.Errorf("failed to marshal environment config: %w", err)
 				}
 
 				fmt.Println("Environment config: ", string(jsonBytes))

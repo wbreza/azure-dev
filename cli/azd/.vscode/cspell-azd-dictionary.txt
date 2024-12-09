@@ -39,6 +39,8 @@ azdcontext
 azddeploy
 azdev
 azdexec
+azdext
+azdgrpc
 azdinternal
 azdtempl
 azdtempl
@@ -170,6 +172,10 @@ pflag
 pgadmin
 posix
 preinit
+protobuf
+protoc
+protoreflect
+protoimpl
 proxying
 psanford
 psycopg
@@ -239,3 +245,10 @@ yacspin
 yamlnode
 ymlt
 zerr
+
+eiannone
+panics
+pancis
+idxs
+extendee
+unsetting

@@ -56,7 +56,10 @@ func (s *environmentService) List(ctx context.Context, req *azdext.EmptyRequest)
 	}, nil
 }
 
-func (s *environmentService) GetCurrent(ctx context.Context, req *azdext.EmptyResponse) (*azdext.EnvironmentResponse, error) {
+func (s *environmentService) GetCurrent(
+	ctx context.Context,
+	req *azdext.EmptyResponse,
+) (*azdext.EnvironmentResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -73,7 +76,10 @@ func (s *environmentService) GetCurrent(ctx context.Context, req *azdext.EmptyRe
 	}, nil
 }
 
-func (s *environmentService) Get(ctx context.Context, req *azdext.GetEnvironmentRequest) (*azdext.EnvironmentResponse, error) {
+func (s *environmentService) Get(
+	ctx context.Context,
+	req *azdext.GetEnvironmentRequest,
+) (*azdext.EnvironmentResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -90,7 +96,10 @@ func (s *environmentService) Get(ctx context.Context, req *azdext.GetEnvironment
 	}, nil
 }
 
-func (s *environmentService) Select(ctx context.Context, req *azdext.SelectEnvironmentRequest) (*azdext.EmptyResponse, error) {
+func (s *environmentService) Select(
+	ctx context.Context,
+	req *azdext.SelectEnvironmentRequest,
+) (*azdext.EmptyResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -112,7 +121,10 @@ func (s *environmentService) Select(ctx context.Context, req *azdext.SelectEnvir
 }
 
 // GetValues retrieves all key-value pairs in the specified environment.
-func (s *environmentService) GetValues(ctx context.Context, req *azdext.GetEnvironmentRequest) (*azdext.KeyValueListResponse, error) {
+func (s *environmentService) GetValues(
+	ctx context.Context,
+	req *azdext.GetEnvironmentRequest,
+) (*azdext.KeyValueListResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -197,7 +209,10 @@ func (s *environmentService) currentEnvironment(ctx context.Context) (*environme
 }
 
 // GetConfig retrieves a config value by path.
-func (s *environmentService) GetConfig(ctx context.Context, req *azdext.GetConfigRequest) (*azdext.GetConfigResponse, error) {
+func (s *environmentService) GetConfig(
+	ctx context.Context,
+	req *azdext.GetConfigRequest,
+) (*azdext.GetConfigResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -213,7 +228,7 @@ func (s *environmentService) GetConfig(ctx context.Context, req *azdext.GetConfi
 	if exists {
 		bytes, err := json.Marshal(value)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal value: %v", err)
+			return nil, fmt.Errorf("failed to marshal value: %w", err)
 		}
 
 		valueBytes = bytes
@@ -226,7 +241,10 @@ func (s *environmentService) GetConfig(ctx context.Context, req *azdext.GetConfi
 }
 
 // GetConfigString retrieves a config value as a string by path.
-func (s *environmentService) GetConfigString(ctx context.Context, req *azdext.GetConfigStringRequest) (*azdext.GetConfigStringResponse, error) {
+func (s *environmentService) GetConfigString(
+	ctx context.Context,
+	req *azdext.GetConfigStringRequest,
+) (*azdext.GetConfigStringResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -245,7 +263,10 @@ func (s *environmentService) GetConfigString(ctx context.Context, req *azdext.Ge
 }
 
 // GetConfigSection retrieves a config section by path.
-func (s *environmentService) GetConfigSection(ctx context.Context, req *azdext.GetConfigSectionRequest) (*azdext.GetConfigSectionResponse, error) {
+func (s *environmentService) GetConfigSection(
+	ctx context.Context,
+	req *azdext.GetConfigSectionRequest,
+) (*azdext.GetConfigSectionResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -259,14 +280,14 @@ func (s *environmentService) GetConfigSection(ctx context.Context, req *azdext.G
 
 	exists, err := env.Config.GetSection(req.Path, &section)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get section: %v", err)
+		return nil, fmt.Errorf("failed to get section: %w", err)
 	}
 
 	var valueBytes []byte
 	if exists {
 		bytes, err := json.Marshal(section)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal value: %v", err)
+			return nil, fmt.Errorf("failed to marshal value: %w", err)
 		}
 
 		valueBytes = bytes
@@ -291,22 +312,25 @@ func (s *environmentService) SetConfig(ctx context.Context, req *azdext.SetConfi
 
 	var value any
 	if err := json.Unmarshal(req.Value, &value); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal value: %v", err)
+		return nil, fmt.Errorf("failed to unmarshal value: %w", err)
 	}
 
 	if err := env.Config.Set(req.Path, value); err != nil {
-		return nil, fmt.Errorf("failed to set value: %v", err)
+		return nil, fmt.Errorf("failed to set value: %w", err)
 	}
 
 	if err := s.envManager.Save(ctx, env); err != nil {
-		return nil, fmt.Errorf("failed to save config: %v", err)
+		return nil, fmt.Errorf("failed to save config: %w", err)
 	}
 
 	return &azdext.EmptyResponse{}, nil
 }
 
 // UnsetConfig unsets a config value at a given path.
-func (s *environmentService) UnsetConfig(ctx context.Context, req *azdext.UnsetConfigRequest) (*azdext.EmptyResponse, error) {
+func (s *environmentService) UnsetConfig(
+	ctx context.Context,
+	req *azdext.UnsetConfigRequest,
+) (*azdext.EmptyResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err
 	}
@@ -317,11 +341,11 @@ func (s *environmentService) UnsetConfig(ctx context.Context, req *azdext.UnsetC
 	}
 
 	if err := env.Config.Unset(req.Path); err != nil {
-		return nil, fmt.Errorf("failed to unset value: %v", err)
+		return nil, fmt.Errorf("failed to unset value: %w", err)
 	}
 
 	if err := s.envManager.Save(ctx, env); err != nil {
-		return nil, fmt.Errorf("failed to save config: %v", err)
+		return nil, fmt.Errorf("failed to save config: %w", err)
 	}
 
 	return &azdext.EmptyResponse{}, nil

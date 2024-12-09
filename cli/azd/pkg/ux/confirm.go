@@ -122,7 +122,10 @@ func (p *Confirm) Ask() (*bool, error) {
 		case <-p.input.SigChan:
 			p.cancelled = true
 			done()
-			p.canvas.Update()
+			if err := p.canvas.Update(); err != nil {
+				return nil, err
+			}
+
 			return nil, ErrCancelled
 
 		case msg := <-input:
@@ -156,7 +159,10 @@ func (p *Confirm) Ask() (*bool, error) {
 				p.input.ResetValue()
 			}
 
-			p.canvas.Update()
+			if err := p.canvas.Update(); err != nil {
+				done()
+				return nil, err
+			}
 
 			if p.complete {
 				done()

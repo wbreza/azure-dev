@@ -3,6 +3,7 @@ package ux
 import (
 	"context"
 	"io"
+	"log"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -81,7 +82,11 @@ func (s *Spinner) Start(ctx context.Context) error {
 				return
 			}
 
-			s.update()
+			if err := s.update(); err != nil {
+				log.Println("Failed to update spinner:", err)
+				return
+			}
+
 			time.Sleep(s.options.Interval)
 		}
 	}(ctx)
