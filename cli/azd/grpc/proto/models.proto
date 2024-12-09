@@ -42,3 +42,18 @@ message AzureContext {
   AzureScope scope = 1;
   repeated string resources = 2;
 }
+
+message Resource {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string location = 4;
+}
+
+message ResourceExtended {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string location = 4;
+  string kind = 5;
+}

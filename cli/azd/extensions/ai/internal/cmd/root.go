@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,59 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			azureContext := deploymentContextReply.AzureContext
+
+			aiServicePrompt, err := azdClient.Prompt().PromptSubscriptionResource(ctx, &azdext.PromptSubscriptionResourceRequest{
+				AzureContext: azureContext,
+				Options: &azdext.PromptResourceOptions{
+					ResourceType:            "Microsoft.CognitiveServices/accounts",
+					Kinds:                   []string{"OpenAI", "AIServices", "CognitiveServices"},
+					ResourceTypeDisplayName: "Azure AI Service",
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to prompt AI service: %w", err)
+			}
+
+			fmt.Println("Selected AI service: ", aiServicePrompt.Resource.Name)
+
+			nameReply, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
+				Options: &azdext.PromptOptions{
+					Required:    true,
+					Message:     "What is your name?",
+					HelpMessage: "This is a help message",
+					Hint:        "This is a hint",
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to prompt: %w", err)
+			}
+
+			fmt.Println("Hello, ", nameReply.Value)
+
+			confirmReply, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
+				Options: &azdext.ConfirmOptions{
+					Message:      "Do you like Chocolate?",
+					DefaultValue: to.Ptr(true),
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to confirm: %w", err)
+			}
+
+			fmt.Printf("Likes Chocolate: %t\n", *confirmReply.Value)
+
+			colors := []string{"Red", "Green", "Blue"}
+			colorReply, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
+				Options: &azdext.SelectOptions{
+					Message: "What is your favorite color?",
+					Allowed: colors,
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to select color: %w", err)
+			}
+
+			fmt.Println("Favorite color: ", colors[*colorReply.Value])
 
 			selectedSubscriptionReply, err := azdClient.Prompt().PromptSubscription(ctx, nil)
 			if err != nil {

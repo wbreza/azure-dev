@@ -19,9 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PromptService_PromptSubscription_FullMethodName  = "/azdext.PromptService/PromptSubscription"
-	PromptService_PromptLocation_FullMethodName      = "/azdext.PromptService/PromptLocation"
-	PromptService_PromptResourceGroup_FullMethodName = "/azdext.PromptService/PromptResourceGroup"
+	PromptService_PromptSubscription_FullMethodName          = "/azdext.PromptService/PromptSubscription"
+	PromptService_PromptLocation_FullMethodName              = "/azdext.PromptService/PromptLocation"
+	PromptService_PromptResourceGroup_FullMethodName         = "/azdext.PromptService/PromptResourceGroup"
+	PromptService_Confirm_FullMethodName                     = "/azdext.PromptService/Confirm"
+	PromptService_Prompt_FullMethodName                      = "/azdext.PromptService/Prompt"
+	PromptService_Select_FullMethodName                      = "/azdext.PromptService/Select"
+	PromptService_PromptSubscriptionResource_FullMethodName  = "/azdext.PromptService/PromptSubscriptionResource"
+	PromptService_PromptResourceGroupResource_FullMethodName = "/azdext.PromptService/PromptResourceGroupResource"
 )
 
 // PromptServiceClient is the client API for PromptService service.
@@ -31,6 +36,11 @@ type PromptServiceClient interface {
 	PromptSubscription(ctx context.Context, in *PromptSubscriptionRequest, opts ...grpc.CallOption) (*PromptSubscriptionResponse, error)
 	PromptLocation(ctx context.Context, in *PromptLocationRequest, opts ...grpc.CallOption) (*PromptLocationResponse, error)
 	PromptResourceGroup(ctx context.Context, in *PromptResourceGroupRequest, opts ...grpc.CallOption) (*PromptResourceGroupResponse, error)
+	Confirm(ctx context.Context, in *ConfirmRequest, opts ...grpc.CallOption) (*ConfirmResponse, error)
+	Prompt(ctx context.Context, in *PromptRequest, opts ...grpc.CallOption) (*PromptResponse, error)
+	Select(ctx context.Context, in *SelectRequest, opts ...grpc.CallOption) (*SelectResponse, error)
+	PromptSubscriptionResource(ctx context.Context, in *PromptSubscriptionResourceRequest, opts ...grpc.CallOption) (*PromptSubscriptionResourceResponse, error)
+	PromptResourceGroupResource(ctx context.Context, in *PromptResourceGroupResourceRequest, opts ...grpc.CallOption) (*PromptResourceGroupResourceResponse, error)
 }
 
 type promptServiceClient struct {
@@ -71,6 +81,56 @@ func (c *promptServiceClient) PromptResourceGroup(ctx context.Context, in *Promp
 	return out, nil
 }
 
+func (c *promptServiceClient) Confirm(ctx context.Context, in *ConfirmRequest, opts ...grpc.CallOption) (*ConfirmResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmResponse)
+	err := c.cc.Invoke(ctx, PromptService_Confirm_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *promptServiceClient) Prompt(ctx context.Context, in *PromptRequest, opts ...grpc.CallOption) (*PromptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromptResponse)
+	err := c.cc.Invoke(ctx, PromptService_Prompt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *promptServiceClient) Select(ctx context.Context, in *SelectRequest, opts ...grpc.CallOption) (*SelectResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SelectResponse)
+	err := c.cc.Invoke(ctx, PromptService_Select_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *promptServiceClient) PromptSubscriptionResource(ctx context.Context, in *PromptSubscriptionResourceRequest, opts ...grpc.CallOption) (*PromptSubscriptionResourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromptSubscriptionResourceResponse)
+	err := c.cc.Invoke(ctx, PromptService_PromptSubscriptionResource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *promptServiceClient) PromptResourceGroupResource(ctx context.Context, in *PromptResourceGroupResourceRequest, opts ...grpc.CallOption) (*PromptResourceGroupResourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PromptResourceGroupResourceResponse)
+	err := c.cc.Invoke(ctx, PromptService_PromptResourceGroupResource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PromptServiceServer is the server API for PromptService service.
 // All implementations must embed UnimplementedPromptServiceServer
 // for forward compatibility.
@@ -78,6 +138,11 @@ type PromptServiceServer interface {
 	PromptSubscription(context.Context, *PromptSubscriptionRequest) (*PromptSubscriptionResponse, error)
 	PromptLocation(context.Context, *PromptLocationRequest) (*PromptLocationResponse, error)
 	PromptResourceGroup(context.Context, *PromptResourceGroupRequest) (*PromptResourceGroupResponse, error)
+	Confirm(context.Context, *ConfirmRequest) (*ConfirmResponse, error)
+	Prompt(context.Context, *PromptRequest) (*PromptResponse, error)
+	Select(context.Context, *SelectRequest) (*SelectResponse, error)
+	PromptSubscriptionResource(context.Context, *PromptSubscriptionResourceRequest) (*PromptSubscriptionResourceResponse, error)
+	PromptResourceGroupResource(context.Context, *PromptResourceGroupResourceRequest) (*PromptResourceGroupResourceResponse, error)
 	mustEmbedUnimplementedPromptServiceServer()
 }
 
@@ -96,6 +161,21 @@ func (UnimplementedPromptServiceServer) PromptLocation(context.Context, *PromptL
 }
 func (UnimplementedPromptServiceServer) PromptResourceGroup(context.Context, *PromptResourceGroupRequest) (*PromptResourceGroupResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PromptResourceGroup not implemented")
+}
+func (UnimplementedPromptServiceServer) Confirm(context.Context, *ConfirmRequest) (*ConfirmResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Confirm not implemented")
+}
+func (UnimplementedPromptServiceServer) Prompt(context.Context, *PromptRequest) (*PromptResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Prompt not implemented")
+}
+func (UnimplementedPromptServiceServer) Select(context.Context, *SelectRequest) (*SelectResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Select not implemented")
+}
+func (UnimplementedPromptServiceServer) PromptSubscriptionResource(context.Context, *PromptSubscriptionResourceRequest) (*PromptSubscriptionResourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PromptSubscriptionResource not implemented")
+}
+func (UnimplementedPromptServiceServer) PromptResourceGroupResource(context.Context, *PromptResourceGroupResourceRequest) (*PromptResourceGroupResourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PromptResourceGroupResource not implemented")
 }
 func (UnimplementedPromptServiceServer) mustEmbedUnimplementedPromptServiceServer() {}
 func (UnimplementedPromptServiceServer) testEmbeddedByValue()                       {}
@@ -172,6 +252,96 @@ func _PromptService_PromptResourceGroup_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PromptService_Confirm_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).Confirm(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_Confirm_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).Confirm(ctx, req.(*ConfirmRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PromptService_Prompt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).Prompt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_Prompt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).Prompt(ctx, req.(*PromptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PromptService_Select_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SelectRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).Select(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_Select_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).Select(ctx, req.(*SelectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PromptService_PromptSubscriptionResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromptSubscriptionResourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).PromptSubscriptionResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_PromptSubscriptionResource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).PromptSubscriptionResource(ctx, req.(*PromptSubscriptionResourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PromptService_PromptResourceGroupResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromptResourceGroupResourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PromptServiceServer).PromptResourceGroupResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PromptService_PromptResourceGroupResource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PromptServiceServer).PromptResourceGroupResource(ctx, req.(*PromptResourceGroupResourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PromptService_ServiceDesc is the grpc.ServiceDesc for PromptService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +360,26 @@ var PromptService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PromptResourceGroup",
 			Handler:    _PromptService_PromptResourceGroup_Handler,
+		},
+		{
+			MethodName: "Confirm",
+			Handler:    _PromptService_Confirm_Handler,
+		},
+		{
+			MethodName: "Prompt",
+			Handler:    _PromptService_Prompt_Handler,
+		},
+		{
+			MethodName: "Select",
+			Handler:    _PromptService_Select_Handler,
+		},
+		{
+			MethodName: "PromptSubscriptionResource",
+			Handler:    _PromptService_PromptSubscriptionResource_Handler,
+		},
+		{
+			MethodName: "PromptResourceGroupResource",
+			Handler:    _PromptService_PromptResourceGroupResource_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
