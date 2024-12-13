@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/spf13/cobra"
 )
@@ -18,9 +17,10 @@ func NewRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			fmt.Println("Start AI command")
+			fmt.Println("Hello from Go!")
+			fmt.Println()
 
-			azdClient, err := azdext.NewAzdClient(os.Getenv("AZD_SERVER"))
+			azdClient, err := azdext.NewAzdClient(azdext.WithAddress(os.Getenv("AZD_SERVER")))
 			if err != nil {
 				return fmt.Errorf("failed to create azd client: %w", err)
 			}
@@ -33,20 +33,6 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			azureContext := deploymentContextReply.AzureContext
-
-			aiServicePrompt, err := azdClient.Prompt().PromptSubscriptionResource(ctx, &azdext.PromptSubscriptionResourceRequest{
-				AzureContext: azureContext,
-				Options: &azdext.PromptResourceOptions{
-					ResourceType:            "Microsoft.CognitiveServices/accounts",
-					Kinds:                   []string{"OpenAI", "AIServices", "CognitiveServices"},
-					ResourceTypeDisplayName: "Azure AI Service",
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to prompt AI service: %w", err)
-			}
-
-			fmt.Println("Selected AI service: ", aiServicePrompt.Resource.Name)
 
 			nameReply, err := azdClient.Prompt().Prompt(ctx, &azdext.PromptRequest{
 				Options: &azdext.PromptOptions{
@@ -61,31 +47,6 @@ func NewRootCommand() *cobra.Command {
 			}
 
 			fmt.Println("Hello, ", nameReply.Value)
-
-			confirmReply, err := azdClient.Prompt().Confirm(ctx, &azdext.ConfirmRequest{
-				Options: &azdext.ConfirmOptions{
-					Message:      "Do you like Chocolate?",
-					DefaultValue: to.Ptr(true),
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to confirm: %w", err)
-			}
-
-			fmt.Printf("Likes Chocolate: %t\n", *confirmReply.Value)
-
-			colors := []string{"Red", "Green", "Blue"}
-			colorReply, err := azdClient.Prompt().Select(ctx, &azdext.SelectRequest{
-				Options: &azdext.SelectOptions{
-					Message: "What is your favorite color?",
-					Allowed: colors,
-				},
-			})
-			if err != nil {
-				return fmt.Errorf("failed to select color: %w", err)
-			}
-
-			fmt.Println("Favorite color: ", colors[*colorReply.Value])
 
 			selectedSubscriptionReply, err := azdClient.Prompt().PromptSubscription(ctx, nil)
 			if err != nil {
@@ -119,6 +80,20 @@ func NewRootCommand() *cobra.Command {
 
 			fmt.Println("Selected resource group: ", selectedResourceGroupReply.ResourceGroup.Name)
 
+			aiServicePrompt, err := azdClient.Prompt().PromptSubscriptionResource(ctx, &azdext.PromptSubscriptionResourceRequest{
+				AzureContext: azureContext,
+				Options: &azdext.PromptResourceOptions{
+					ResourceType:            "Microsoft.CognitiveServices/accounts",
+					Kinds:                   []string{"OpenAI", "AIServices", "CognitiveServices"},
+					ResourceTypeDisplayName: "Azure AI Service",
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to prompt AI service: %w", err)
+			}
+
+			fmt.Println("Selected AI service: ", aiServicePrompt.Resource.Name)
+
 			projectReply, err := azdClient.Project().Get(ctx, &azdext.EmptyRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to get project: %w", err)
@@ -126,7 +101,7 @@ func NewRootCommand() *cobra.Command {
 
 			fmt.Println("Project: ", projectReply.Project.Name)
 
-			currentEnvReply, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyResponse{})
+			currentEnvReply, err := azdClient.Environment().GetCurrent(ctx, &azdext.EmptyRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to get current environment: %w", err)
 			}
@@ -192,6 +167,16 @@ func NewRootCommand() *cobra.Command {
 			return nil
 		},
 	}
+
+	//rootCmd.AddCommand(newChatCommand())
+	// rootCmd.AddCommand(newModelCommand())
+	// rootCmd.AddCommand(newServiceCommand())
+	// rootCmd.AddCommand(newChatCommand())
+	// rootCmd.AddCommand(newDocumentCommand())
+	// rootCmd.AddCommand(newEmbeddingCommand())
+	// rootCmd.AddCommand(newIndexCommand())
+	// rootCmd.AddCommand(newEvaluateCommand())
+	rootCmd.AddCommand(newVersionCommand())
 
 	rootCmd.PersistentFlags().Bool("debug", false, "Enable debug mode")
 

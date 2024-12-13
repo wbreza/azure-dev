@@ -40,7 +40,7 @@ const (
 // EnvironmentService defines methods for managing environments and their key-value pairs.
 type EnvironmentServiceClient interface {
 	// Gets the current environment.
-	GetCurrent(ctx context.Context, in *EmptyResponse, opts ...grpc.CallOption) (*EnvironmentResponse, error)
+	GetCurrent(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*EnvironmentResponse, error)
 	List(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*EnvironmentListResponse, error)
 	// Get retrieves an environment by its name.
 	Get(ctx context.Context, in *GetEnvironmentRequest, opts ...grpc.CallOption) (*EnvironmentResponse, error)
@@ -72,7 +72,7 @@ func NewEnvironmentServiceClient(cc grpc.ClientConnInterface) EnvironmentService
 	return &environmentServiceClient{cc}
 }
 
-func (c *environmentServiceClient) GetCurrent(ctx context.Context, in *EmptyResponse, opts ...grpc.CallOption) (*EnvironmentResponse, error) {
+func (c *environmentServiceClient) GetCurrent(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*EnvironmentResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EnvironmentResponse)
 	err := c.cc.Invoke(ctx, EnvironmentService_GetCurrent_FullMethodName, in, out, cOpts...)
@@ -199,7 +199,7 @@ func (c *environmentServiceClient) UnsetConfig(ctx context.Context, in *UnsetCon
 // EnvironmentService defines methods for managing environments and their key-value pairs.
 type EnvironmentServiceServer interface {
 	// Gets the current environment.
-	GetCurrent(context.Context, *EmptyResponse) (*EnvironmentResponse, error)
+	GetCurrent(context.Context, *EmptyRequest) (*EnvironmentResponse, error)
 	List(context.Context, *EmptyRequest) (*EnvironmentListResponse, error)
 	// Get retrieves an environment by its name.
 	Get(context.Context, *GetEnvironmentRequest) (*EnvironmentResponse, error)
@@ -231,7 +231,7 @@ type EnvironmentServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedEnvironmentServiceServer struct{}
 
-func (UnimplementedEnvironmentServiceServer) GetCurrent(context.Context, *EmptyResponse) (*EnvironmentResponse, error) {
+func (UnimplementedEnvironmentServiceServer) GetCurrent(context.Context, *EmptyRequest) (*EnvironmentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCurrent not implemented")
 }
 func (UnimplementedEnvironmentServiceServer) List(context.Context, *EmptyRequest) (*EnvironmentListResponse, error) {
@@ -289,7 +289,7 @@ func RegisterEnvironmentServiceServer(s grpc.ServiceRegistrar, srv EnvironmentSe
 }
 
 func _EnvironmentService_GetCurrent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(EmptyResponse)
+	in := new(EmptyRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func _EnvironmentService_GetCurrent_Handler(srv interface{}, ctx context.Context
 		FullMethod: EnvironmentService_GetCurrent_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(EnvironmentServiceServer).GetCurrent(ctx, req.(*EmptyResponse))
+		return srv.(EnvironmentServiceServer).GetCurrent(ctx, req.(*EmptyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

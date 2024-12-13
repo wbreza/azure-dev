@@ -1,11 +1,13 @@
 package azdext
 
 import (
-	"fmt"
+	"os"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+type AzdClientOption func(*AzdClient) error
 
 type AzdClient struct {
 	connection        *grpc.ClientConn
@@ -16,15 +18,32 @@ type AzdClient struct {
 	deploymentClient  DeploymentServiceClient
 }
 
-func NewAzdClient(serverAddress string) (*AzdClient, error) {
-	connection, err := grpc.NewClient(serverAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to server: %w", err)
+func WithAddress(address string) AzdClientOption {
+	return func(c *AzdClient) error {
+		connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return err
+		}
+
+		c.connection = connection
+		return nil
+	}
+}
+
+func NewAzdClient(opts ...AzdClientOption) (*AzdClient, error) {
+	if opts == nil {
+		opts = append(opts, WithAddress(os.Getenv("AZD_SERVER")))
 	}
 
-	return &AzdClient{
-		connection: connection,
-	}, nil
+	client := &AzdClient{}
+
+	for _, opt := range opts {
+		if err := opt(client); err != nil {
+			return nil, err
+		}
+	}
+
+	return client, nil
 }
 
 func (c *AzdClient) Close() {

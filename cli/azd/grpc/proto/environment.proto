@@ -9,7 +9,7 @@ import "models.proto";
 // EnvironmentService defines methods for managing environments and their key-value pairs.
 service EnvironmentService {
   // Gets the current environment.
-  rpc GetCurrent(EmptyResponse) returns (EnvironmentResponse);
+  rpc GetCurrent(EmptyRequest) returns (EnvironmentResponse);
 
   rpc List(EmptyRequest) returns (EnvironmentListResponse);
 

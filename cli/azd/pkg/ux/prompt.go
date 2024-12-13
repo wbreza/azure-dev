@@ -71,11 +71,11 @@ type Prompt struct {
 
 func NewPrompt(options *PromptOptions) *Prompt {
 	mergedOptions := PromptOptions{}
-	if err := mergo.Merge(&mergedOptions, DefaultPromptOptions, mergo.WithoutDereference); err != nil {
+	if err := mergo.Merge(&mergedOptions, options, mergo.WithoutDereference); err != nil {
 		panic(err)
 	}
 
-	if err := mergo.Merge(&mergedOptions, options, mergo.WithoutDereference); err != nil {
+	if err := mergo.Merge(&mergedOptions, DefaultPromptOptions, mergo.WithoutDereference); err != nil {
 		panic(err)
 	}
 

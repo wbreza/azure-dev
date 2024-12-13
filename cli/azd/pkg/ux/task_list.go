@@ -16,7 +16,7 @@ import (
 	"github.com/fatih/color"
 )
 
-type TaskListConfig struct {
+type TaskListOptions struct {
 	// The writer to use for output (default: os.Stdout)
 	Writer             io.Writer
 	MaxConcurrentAsync int
@@ -28,7 +28,7 @@ type TaskListConfig struct {
 	PendingStyle       string
 }
 
-var DefaultTaskListConfig TaskListConfig = TaskListConfig{
+var DefaultTaskListOptions TaskListOptions = TaskListOptions{
 	Writer:             os.Stdout,
 	MaxConcurrentAsync: 5,
 
@@ -43,7 +43,7 @@ var DefaultTaskListConfig TaskListConfig = TaskListConfig{
 type TaskList struct {
 	canvas    Canvas
 	waitGroup sync.WaitGroup
-	config    *TaskListConfig
+	options   *TaskListOptions
 	allTasks  []*Task
 	syncTasks []*Task // Queue for synchronous tasks
 
@@ -83,30 +83,30 @@ const (
 	Success
 )
 
-func NewTaskList(config *TaskListConfig) *TaskList {
-	mergedConfig := TaskListConfig{}
+func NewTaskList(options *TaskListOptions) *TaskList {
+	mergedOptions := TaskListOptions{}
 
-	if config == nil {
-		config = &TaskListConfig{}
+	if options == nil {
+		options = &TaskListOptions{}
 	}
 
-	if err := mergo.Merge(&mergedConfig, config, mergo.WithoutDereference); err != nil {
+	if err := mergo.Merge(&mergedOptions, options, mergo.WithoutDereference); err != nil {
 		panic(err)
 	}
 
-	if err := mergo.Merge(&mergedConfig, DefaultTaskListConfig, mergo.WithoutDereference); err != nil {
+	if err := mergo.Merge(&mergedOptions, DefaultTaskListOptions, mergo.WithoutDereference); err != nil {
 		panic(err)
 	}
 
 	return &TaskList{
-		config:         &mergedConfig,
+		options:        &mergedOptions,
 		waitGroup:      sync.WaitGroup{},
 		allTasks:       []*Task{},
 		syncTasks:      []*Task{},
 		syncMutex:      sync.Mutex{},
 		errorMutex:     sync.Mutex{},
 		completed:      0,
-		asyncSemaphore: make(chan struct{}, mergedConfig.MaxConcurrentAsync),
+		asyncSemaphore: make(chan struct{}, mergedOptions.MaxConcurrentAsync),
 		errors:         []error{},
 	}
 }
@@ -119,7 +119,7 @@ func (t *TaskList) WithCanvas(canvas Canvas) Visual {
 // Run executes all async tasks first and then runs queued sync tasks sequentially.
 func (t *TaskList) Run() error {
 	if t.canvas == nil {
-		t.canvas = NewCanvas(t).WithWriter(t.config.Writer)
+		t.canvas = NewCanvas(t).WithWriter(t.options.Writer)
 	}
 
 	if err := t.canvas.Run(); err != nil {
@@ -230,13 +230,13 @@ func (t *TaskList) Render(printer Printer) error {
 
 		switch task.State {
 		case Pending:
-			printer.Fprintf("%s %s\n", color.HiBlackString(t.config.PendingStyle), task.Title)
+			printer.Fprintf("%s %s\n", color.HiBlackString(t.options.PendingStyle), task.Title)
 		case Running:
-			printer.Fprintf("%s %s%s %s\n", color.CyanString(t.config.RunningStyle), task.Title, progressText, elapsedText)
+			printer.Fprintf("%s %s%s %s\n", color.CyanString(t.options.RunningStyle), task.Title, progressText, elapsedText)
 		case Warning:
 			printer.Fprintf(
 				"%s %s %s %s\n",
-				color.YellowString(t.config.WarningStyle),
+				color.YellowString(t.options.WarningStyle),
 				task.Title,
 				elapsedText,
 				color.RedString("(%s)", errorDescription),
@@ -244,17 +244,17 @@ func (t *TaskList) Render(printer Printer) error {
 		case Error:
 			printer.Fprintf(
 				"%s %s %s %s\n",
-				color.RedString(t.config.ErrorStyle),
+				color.RedString(t.options.ErrorStyle),
 				task.Title,
 				elapsedText,
 				color.RedString("(%s)", errorDescription),
 			)
 		case Success:
-			printer.Fprintf("%s %s  %s\n", color.GreenString(t.config.SuccessStyle), task.Title, elapsedText)
+			printer.Fprintf("%s %s  %s\n", color.GreenString(t.options.SuccessStyle), task.Title, elapsedText)
 		case Skipped:
 			printer.Fprintf(
 				"%s %s %s\n",
-				color.HiBlackString(t.config.SkippedStyle),
+				color.HiBlackString(t.options.SkippedStyle),
 				task.Title,
 				color.RedString("(%s)", errorDescription),
 			)
