@@ -166,7 +166,10 @@ func (a *extensionAction) Run(ctx context.Context) (*actions.ActionResult, error
 		return nil, fmt.Errorf("failed to start gRPC server: %w", err)
 	}
 
-	allEnv = append(allEnv, fmt.Sprintf("AZD_SERVER=%s", serverInfo.Address))
+	allEnv = append(allEnv,
+		fmt.Sprintf("AZD_SERVER=%s", serverInfo.Address),
+		fmt.Sprintf("AZD_ACCESS_TOKEN=%s", serverInfo.AccessToken),
+	)
 
 	runArgs := exec.
 		NewRunArgs(extensionPath, a.args...).

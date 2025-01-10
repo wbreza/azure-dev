@@ -58,7 +58,7 @@ func (s *environmentService) List(ctx context.Context, req *azdext.EmptyRequest)
 
 func (s *environmentService) GetCurrent(
 	ctx context.Context,
-	req *azdext.EmptyResponse,
+	req *azdext.EmptyRequest,
 ) (*azdext.EnvironmentResponse, error) {
 	if err := s.initialize(); err != nil {
 		return nil, err

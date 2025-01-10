@@ -1,0 +1,8 @@
+name: azcopy
+displayName: azcopy extension
+description: This extension wraps the azcopy tools for easy use within azd.
+usage: azd ai <command> [options]
+examples:
+  - name: Upload
+    description: Uploads files to a blob storage account container.
+    usage: azd azcopy upload

@@ -1,17 +1,24 @@
 package azdgrpc
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
 
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type ServerInfo struct {
-	Address string
-	Port    int
+	Address     string
+	Port        int
+	AccessToken string
 }
 
 type Server struct {
@@ -36,11 +43,19 @@ func NewServer(
 		promptService:      promptService,
 		userConfigService:  userConfigService,
 		deploymentService:  deploymentService,
-		grpcServer:         grpc.NewServer(),
 	}
 }
 
 func (s *Server) Start() (*ServerInfo, error) {
+	accessToken, err := generateToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	s.grpcServer = grpc.NewServer(
+		grpc.UnaryInterceptor(tokenAuthInterceptor(accessToken)),
+	)
+
 	// Use ":0" to let the system assign an available random port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -67,8 +82,9 @@ func (s *Server) Start() (*ServerInfo, error) {
 	log.Printf("AZD Server listening on port %d", randomPort)
 
 	return &ServerInfo{
-		Address: fmt.Sprintf("localhost:%d", randomPort),
-		Port:    randomPort,
+		Address:     fmt.Sprintf("localhost:%d", randomPort),
+		Port:        randomPort,
+		AccessToken: accessToken,
 	}, nil
 }
 
@@ -81,4 +97,35 @@ func (s *Server) Stop() error {
 	log.Println("AZD Server stopped")
 
 	return nil
+}
+
+func tokenAuthInterceptor(expectedToken string) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req interface{},
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "metadata missing")
+		}
+
+		// Extract the authorization token from metadata
+		token := md["authorization"]
+		if len(token) == 0 || token[0] != expectedToken {
+			return nil, status.Error(codes.Unauthenticated, "invalid token")
+		}
+
+		// Proceed to the handler
+		return handler(ctx, req)
+	}
+}
+
+func generateToken() (string, error) {
+	bytes := make([]byte, 16) // 128-bit token
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
