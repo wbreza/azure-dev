@@ -18,7 +18,7 @@ type deploymentService struct {
 	lazyAzdContext    *lazy.Lazy[*azdcontext.AzdContext]
 	lazyEnvManager    *lazy.Lazy[environment.Manager]
 	lazyProjectConfig *lazy.Lazy[*project.ProjectConfig]
-	bicepProvider     *bicep.BicepProvider
+	lazyBicepProvider *lazy.Lazy[*bicep.BicepProvider]
 	deploymentService azapi.DeploymentService
 }
 
@@ -26,14 +26,14 @@ func NewDeploymentService(
 	lazyAzdContext *lazy.Lazy[*azdcontext.AzdContext],
 	lazyEnvManager *lazy.Lazy[environment.Manager],
 	lazyProjectConfig *lazy.Lazy[*project.ProjectConfig],
-	bicepProvider *bicep.BicepProvider,
+	lazyBicepProvider *lazy.Lazy[*bicep.BicepProvider],
 	azureDeploymentService azapi.DeploymentService,
 ) azdext.DeploymentServiceServer {
 	return &deploymentService{
 		lazyAzdContext:    lazyAzdContext,
 		lazyEnvManager:    lazyEnvManager,
 		lazyProjectConfig: lazyProjectConfig,
-		bicepProvider:     bicepProvider,
+		lazyBicepProvider: lazyBicepProvider,
 		deploymentService: azureDeploymentService,
 	}
 }
@@ -52,11 +52,16 @@ func (s *deploymentService) GetDeployment(
 		return nil, err
 	}
 
-	if err := s.bicepProvider.Initialize(ctx, azdContext.ProjectDirectory(), projectConfig.Infra); err != nil {
+	bicepProvider, err := s.lazyBicepProvider.GetValue()
+	if err != nil {
 		return nil, err
 	}
 
-	latestDeployment, err := s.bicepProvider.LastDeployment(ctx)
+	if err := bicepProvider.Initialize(ctx, azdContext.ProjectDirectory(), projectConfig.Infra); err != nil {
+		return nil, err
+	}
+
+	latestDeployment, err := bicepProvider.LastDeployment(ctx)
 	if err != nil {
 		return nil, err
 	}
