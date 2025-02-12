@@ -134,5 +134,66 @@
               "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.1/azd-int-registry-windows-arm64.zip"
             }
           }
+        },
+        {
+          "version": "0.0.2",
+          "usage": "azd registry package [options]",
+          "examples": [
+            {
+              "name": "package",
+              "description": "Packages an AZD extension for publishing to a registry.",
+              "usage": "azd registry package [options]"
+            }
+          ],
+          "artifacts": {
+            "darwin/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "100ee7f81a8a86aa829f29b80ed6df515ed9278768fbd498bcbdaf77c20ccc21"
+              },
+              "entryPoint": "azd-int-registry-darwin-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-darwin-amd64.zip"
+            },
+            "darwin/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "fc2fbcc78f2a7db12dfbab10ff1c41a6d1411c84b46d6e562cc00e85e97d2a91"
+              },
+              "entryPoint": "azd-int-registry-darwin-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-darwin-arm64.zip"
+            },
+            "linux/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "1282ac0584127dfc60cc2e7254c4434fbfce7d0dd56314a7eb19972c2c1b8c67"
+              },
+              "entryPoint": "azd-int-registry-linux-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-linux-amd64.zip"
+            },
+            "linux/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "9cf26e4bdde0628bc348671a8b091617daea48b3729014af92cb317eb512daf2"
+              },
+              "entryPoint": "azd-int-registry-linux-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-linux-arm64.zip"
+            },
+            "windows/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "d427cd55632df1ac60713cf0af5d778cf9ccc1ada9eb92d8c005d3095f95b78c"
+              },
+              "entryPoint": "azd-int-registry-windows-amd64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-windows-amd64.zip"
+            },
+            "windows/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "1546aaf4f706f1632a105cd2aede8d8456435408f93c19d378cad7874d6ff233"
+              },
+              "entryPoint": "azd-int-registry-windows-arm64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.2/azd-int-registry-windows-arm64.zip"
+            }
+          }
         }
       ]
