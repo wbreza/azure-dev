@@ -1,3 +1,69 @@
 {
   "extensions": []
+        },
+        {
+          "version": "0.0.2",
+          "usage": "azd demo \u003ccommand\u003e [options]",
+          "examples": [
+            {
+              "name": "context",
+              "description": "Displays the current `azd` project \u0026 environment context.",
+              "usage": "azd demo context"
+            },
+            {
+              "name": "prompt",
+              "description": "Display prompt capabilities.",
+              "usage": "azd demo prompt"
+            }
+          ],
+          "artifacts": {
+            "darwin/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "658d12b8d2a1d1ddf4f378bf3fe4cfde18a4515987da15c3b7eebda467231f8a"
+              },
+              "entryPoint": "azd-ext-demo-darwin-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-darwin-amd64.zip"
+            },
+            "darwin/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "c1843397ab8b975e63ae18b0ccf43e6d8ffe77a699a162107f31c6cb77dd0d32"
+              },
+              "entryPoint": "azd-ext-demo-darwin-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-darwin-arm64.zip"
+            },
+            "linux/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "9912a1c4cd302e309011cc1f5684bc450258a47253254734905781c6e32bd21c"
+              },
+              "entryPoint": "azd-ext-demo-linux-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-linux-amd64.zip"
+            },
+            "linux/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "e1596b31eb7d1de03ea00c8f6f4a2e17fcdf77a9e9bac45330b2ff74bc5f4ecc"
+              },
+              "entryPoint": "azd-ext-demo-linux-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-linux-arm64.zip"
+            },
+            "windows/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "d6794674d3ab9779f2ff27cf2e59b2de5106c9845fb8234cefd835e1338bf201"
+              },
+              "entryPoint": "azd-ext-demo-windows-amd64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-windows-amd64.zip"
+            },
+            "windows/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "0cd5dadff57f275017ec3123710337fd87c404a57cff0fc1dbe4f1cc9b4f8e59"
+              },
+              "entryPoint": "azd-ext-demo-windows-arm64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.0.2/azd-ext-demo-windows-arm64.zip"
+            }
+          }
 }
