@@ -197,3 +197,21 @@
           }
         }
       ]
+    },
+    {
+      "id": "azd.internal.pack",
+      "displayName": "The AZD internal extension pack",
+      "description": "Includes AZD internal extensions",
+      "versions": [
+        {
+          "version": "0.0.1",
+          "usage": "",
+          "examples": null,
+          "dependencies": [
+            {
+              "id": "azd.internal.registry",
+              "version": "latest"
+            }
+          ]
+        }
+      ]
