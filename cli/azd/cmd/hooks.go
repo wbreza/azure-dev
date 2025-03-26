@@ -14,6 +14,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/output/ux"
 	"github.com/azure/azure-dev/cli/azd/pkg/project"
@@ -234,7 +235,15 @@ func (hra *hooksRunAction) execHook(
 
 	hooksManager := ext.NewHooksManager(cwd)
 	hooksRunner := ext.NewHooksRunner(
-		hooksManager, hra.commandRunner, hra.envManager, hra.console, cwd, hooksMap, hra.env, hra.serviceLocator)
+		hooksManager,
+		hra.commandRunner,
+		hra.envManager,
+		hra.console,
+		cwd,
+		hooksMap,
+		lazy.From(hra.env),
+		hra.serviceLocator,
+	)
 
 	previewer := hra.console.ShowPreviewer(ctx, &input.ShowPreviewerOptions{
 		Prefix:       "  ",

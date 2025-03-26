@@ -15,6 +15,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/ioc"
 	"github.com/azure/azure-dev/cli/azd/pkg/keyvault"
+	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
 	"github.com/azure/azure-dev/cli/azd/pkg/output"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools/bash"
@@ -29,7 +30,7 @@ type HooksRunner struct {
 	console        input.Console
 	cwd            string
 	hooks          map[string][]*HookConfig
-	env            *environment.Environment
+	env            *lazy.Lazy[*environment.Environment]
 	envManager     environment.Manager
 	serviceLocator ioc.ServiceLocator
 }
@@ -43,7 +44,7 @@ func NewHooksRunner(
 	console input.Console,
 	cwd string,
 	hooks map[string][]*HookConfig,
-	env *environment.Environment,
+	env *lazy.Lazy[*environment.Environment],
 	serviceLocator ioc.ServiceLocator,
 ) *HooksRunner {
 	if cwd == "" {
@@ -99,9 +100,13 @@ func (h *HooksRunner) RunHooks(
 		return fmt.Errorf("failed running scripts for hooks '%s', %w", strings.Join(commands, ","), err)
 	}
 
+	env, _ := h.env.GetValue()
+
 	for _, hookConfig := range hooks {
-		if err := h.envManager.Reload(ctx, h.env); err != nil {
-			return fmt.Errorf("reloading environment before running hook: %w", err)
+		if env != nil {
+			if err := h.envManager.Reload(ctx, env); err != nil {
+				return fmt.Errorf("reloading environment before running hook: %w", err)
+			}
 		}
 
 		err := h.execHook(ctx, hookConfig, options)
@@ -109,8 +114,10 @@ func (h *HooksRunner) RunHooks(
 			return err
 		}
 
-		if err := h.envManager.Reload(ctx, h.env); err != nil {
-			return fmt.Errorf("reloading environment after running hook: %w", err)
+		if env != nil {
+			if err := h.envManager.Reload(ctx, env); err != nil {
+				return fmt.Errorf("reloading environment after running hook: %w", err)
+			}
 		}
 	}
 
@@ -142,31 +149,38 @@ func (h *HooksRunner) execHook(ctx context.Context, hookConfig *HookConfig, opti
 		options = &tools.ExecOptions{}
 	}
 
-	hookEnv := environment.NewWithValues("temp", h.env.Dotenv())
-	if len(hookConfig.Secrets) > 0 {
-		err := h.serviceLocator.Invoke(func(keyvaultService keyvault.KeyVaultService) error {
-			for key, value := range hookConfig.Secrets {
-				setValue := value
-				if valueFromEnv, exists := h.env.LookupEnv(value); exists {
-					if keyvault.IsAzureKeyVaultSecret(valueFromEnv) {
-						secretValue, err := keyvaultService.SecretFromAkvs(ctx, valueFromEnv)
-						if err != nil {
-							return err
+	var envVars []string
+	env, _ := h.env.GetValue()
+
+	if env != nil {
+		hookEnv := environment.NewWithValues("temp", env.Dotenv())
+		if len(hookConfig.Secrets) > 0 {
+			err := h.serviceLocator.Invoke(func(keyvaultService keyvault.KeyVaultService) error {
+				for key, value := range hookConfig.Secrets {
+					setValue := value
+					if valueFromEnv, exists := env.LookupEnv(value); exists {
+						if keyvault.IsAzureKeyVaultSecret(valueFromEnv) {
+							secretValue, err := keyvaultService.SecretFromAkvs(ctx, valueFromEnv)
+							if err != nil {
+								return err
+							}
+							valueFromEnv = secretValue
 						}
-						valueFromEnv = secretValue
+						setValue = valueFromEnv
 					}
-					setValue = valueFromEnv
+					hookEnv.DotenvSet(key, setValue)
 				}
-				hookEnv.DotenvSet(key, setValue)
+				return nil
+			})
+			if err != nil {
+				return err
 			}
-			return nil
-		})
-		if err != nil {
-			return err
 		}
+
+		envVars = hookEnv.Environ()
 	}
 
-	script, err := h.GetScript(hookConfig, hookEnv.Environ())
+	script, err := h.GetScript(hookConfig, envVars)
 	if err != nil {
 		return err
 	}

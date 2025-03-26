@@ -54,11 +54,12 @@ func NewHooksMiddleware(
 
 // Runs the Hooks middleware
 func (m *HooksMiddleware) Run(ctx context.Context, next NextFn) (*actions.ActionResult, error) {
-	env, err := m.lazyEnv.GetValue()
-	if err != nil {
-		log.Println("azd environment is not available, skipping all hook registrations.")
-		return next(ctx)
-	}
+	var env *environment.Environment
+	// env, err := m.lazyEnv.GetValue()
+	// if err != nil {
+	// 	log.Println("azd environment is not available, skipping all hook registrations.")
+	// 	return next(ctx)
+	// }
 
 	projectConfig, err := m.lazyProjectConfig.GetValue()
 	if err != nil || projectConfig == nil {
@@ -101,7 +102,7 @@ func (m *HooksMiddleware) registerCommandHooks(
 		m.console,
 		projectConfig.Path,
 		projectConfig.Hooks,
-		env,
+		m.lazyEnv,
 		m.serviceLocator,
 	)
 
@@ -160,7 +161,7 @@ func (m *HooksMiddleware) registerServiceHooks(
 			m.console,
 			service.Path(),
 			service.Hooks,
-			env,
+			m.lazyEnv,
 			m.serviceLocator,
 		)
 

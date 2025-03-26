@@ -182,18 +182,21 @@ func NewRootCmd(
 		ActionResolver: newLogoutAction,
 	})
 
-	root.Add("init", &actions.ActionDescriptorOptions{
-		Command:        newInitCmd(),
-		FlagsResolver:  newInitFlags,
-		ActionResolver: newInitAction,
-		HelpOptions: actions.ActionHelpOptions{
-			Description: getCmdInitHelpDescription,
-			Footer:      getCmdInitHelpFooter,
-		},
-		GroupingOptions: actions.CommandGroupOptions{
-			RootLevelHelp: actions.CmdGroupConfig,
-		},
-	})
+	root.
+		Add("init", &actions.ActionDescriptorOptions{
+			Command:        newInitCmd(),
+			FlagsResolver:  newInitFlags,
+			ActionResolver: newInitAction,
+			HelpOptions: actions.ActionHelpOptions{
+				Description: getCmdInitHelpDescription,
+				Footer:      getCmdInitHelpFooter,
+			},
+			GroupingOptions: actions.CommandGroupOptions{
+				RootLevelHelp: actions.CmdGroupConfig,
+			},
+		}).
+		UseMiddleware("hooks", middleware.NewHooksMiddleware).
+		UseMiddleware("extensions", middleware.NewExtensionsMiddleware)
 
 	root.
 		Add("restore", &actions.ActionDescriptorOptions{

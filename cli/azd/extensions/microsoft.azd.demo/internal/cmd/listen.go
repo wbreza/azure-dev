@@ -33,6 +33,22 @@ func newListenCommand() *cobra.Command {
 			// Register the event handlers
 			err = eventManager.AddProjectEventHandler(
 				ctx,
+				"postinit",
+				func(ctx context.Context, args *azdext.ProjectEventArgs) error {
+					for i := 1; i <= 20; i++ {
+						fmt.Printf("%d. Doing important work in extension...\n", i)
+						time.Sleep(250 * time.Millisecond)
+					}
+
+					return nil
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("failed to add preprovision project event handler: %w", err)
+			}
+
+			err = eventManager.AddProjectEventHandler(
+				ctx,
 				"preprovision",
 				func(ctx context.Context, args *azdext.ProjectEventArgs) error {
 					for i := 1; i <= 20; i++ {
