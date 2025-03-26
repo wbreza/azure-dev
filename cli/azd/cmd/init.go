@@ -20,6 +20,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/pkg/environment"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/exec"
+	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/extensions"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/lazy"
@@ -105,6 +106,7 @@ func (i *initFlags) Bind(local *pflag.FlagSet, global *internal.GlobalCommandOpt
 type initAction struct {
 	lazyAzdCtx        *lazy.Lazy[*azdcontext.AzdContext]
 	lazyEnvManager    *lazy.Lazy[environment.Manager]
+	lazyProjectConfig *lazy.Lazy[*project.ProjectConfig]
 	console           input.Console
 	cmdRun            exec.CommandRunner
 	gitCli            *git.Cli
@@ -118,6 +120,7 @@ type initAction struct {
 func newInitAction(
 	lazyAzdCtx *lazy.Lazy[*azdcontext.AzdContext],
 	lazyEnvManager *lazy.Lazy[environment.Manager],
+	lazyProjectConfig *lazy.Lazy[*project.ProjectConfig],
 	cmdRun exec.CommandRunner,
 	console input.Console,
 	gitCli *git.Cli,
@@ -130,6 +133,7 @@ func newInitAction(
 	return &initAction{
 		lazyAzdCtx:        lazyAzdCtx,
 		lazyEnvManager:    lazyEnvManager,
+		lazyProjectConfig: lazyProjectConfig,
 		console:           console,
 		cmdRun:            cmdRun,
 		gitCli:            gitCli,
@@ -149,6 +153,15 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 
 	azdCtx := azdcontext.NewAzdContextWithDirectory(wd)
 	i.lazyAzdCtx.SetValue(azdCtx)
+
+	projectConfig, err := i.lazyProjectConfig.GetValue()
+	if projectConfig != nil && err == nil {
+		// Raise the 'preinit' project event
+		preinitEvent := ext.Event(fmt.Sprintf("pre%s", project.ProjectEventInit))
+		projectConfig.RaiseEvent(ctx, preinitEvent, project.ProjectLifecycleEventArgs{
+			Project: projectConfig,
+		})
+	}
 
 	if i.flags.templateBranch != "" && i.flags.templatePath == "" {
 		return nil,
@@ -306,18 +319,18 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 				return nil, err
 			}
 
-			prjConfig := project.ProjectConfig{
-				Name: name,
-			}
+			prjConfig := project.NewProjectConfig(name)
 
 			if composeAlphaEnabled {
 				prjConfig.MetaSchemaVersion = "alpha"
 			}
 
-			err = project.Save(ctx, &prjConfig, azdCtx.ProjectPath())
+			err = project.Save(ctx, prjConfig, azdCtx.ProjectPath())
 			if err != nil {
 				return nil, fmt.Errorf("saving project config: %w", err)
 			}
+
+			i.lazyProjectConfig.SetValue(prjConfig)
 
 			followUp = "Run " + output.WithHighLightFormat("azd add") + " to add new Azure components to your project."
 		}
@@ -330,6 +343,17 @@ func (i *initAction) Run(ctx context.Context) (*actions.ActionResult, error) {
 	if err := i.initializeExtensions(ctx, azdCtx); err != nil {
 		return nil, fmt.Errorf("initializing project extensions: %w", err)
 	}
+
+	projectConfig, err = i.lazyProjectConfig.GetValue()
+	if err != nil {
+		return nil, fmt.Errorf("loading project config: %w", err)
+	}
+
+	// Raise the 'postinit' project event
+	postInitEvent := ext.Event(fmt.Sprintf("post%s", project.ProjectEventInit))
+	projectConfig.RaiseEvent(ctx, postInitEvent, project.ProjectLifecycleEventArgs{
+		Project: projectConfig,
+	})
 
 	return &actions.ActionResult{
 		Message: &actions.ResultMessage{

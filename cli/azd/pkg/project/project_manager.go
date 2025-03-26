@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	ProjectEventInit      ext.Event = "init"
 	ProjectEventDeploy    ext.Event = "deploy"
 	ProjectEventProvision ext.Event = "provision"
 )

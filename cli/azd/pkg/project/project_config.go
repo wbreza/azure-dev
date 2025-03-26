@@ -44,6 +44,13 @@ type ProjectConfig struct {
 	*ext.EventDispatcher[ProjectLifecycleEventArgs] `yaml:"-"`
 }
 
+func NewProjectConfig(name string) *ProjectConfig {
+	return &ProjectConfig{
+		Name:            name,
+		EventDispatcher: ext.NewEventDispatcher[ProjectLifecycleEventArgs](),
+	}
+}
+
 // RequiredVersions contains information about what versions of tools this project requires.
 // If a value is nil, it is treated as if there is no constraint.
 type RequiredVersions struct {
