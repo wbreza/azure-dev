@@ -303,8 +303,6 @@
           }
         }
       ]
-<<<<<<< Updated upstream
-=======
     },
     {
       "id": "microsoft.azd.extensions",
@@ -392,7 +390,6 @@
           }
         }
       ]
->>>>>>> Stashed changes
     }
   ]
 }
