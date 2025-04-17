@@ -303,6 +303,96 @@
           }
         }
       ]
+<<<<<<< Updated upstream
+=======
+    },
+    {
+      "id": "microsoft.azd.extensions",
+      "namespace": "x",
+      "displayName": "AZD Extensions Developer Kit",
+      "description": "This extension provides a set of tools for AZD extension developers to test and debug their extensions.",
+      "versions": [
+        {
+          "capabilities": [
+            "custom-commands"
+          ],
+          "version": "0.0.3",
+          "usage": "azd x \u003ccommand\u003e [options]",
+          "examples": [
+            {
+              "name": "init",
+              "description": "Initialize a new AZD extension project.",
+              "usage": "azd x init"
+            },
+            {
+              "name": "build",
+              "description": "Build the AZD extension project.",
+              "usage": "azd x build"
+            },
+            {
+              "name": "package",
+              "description": "Package the AZD extension project into a distributable format and add to local registry.",
+              "usage": "azd x package"
+            },
+            {
+              "name": "watch",
+              "description": "Watch for changes in the extension project and automatically rebuild and reload the extension.",
+              "usage": "azd x watch"
+            }
+          ],
+          "artifacts": {
+            "darwin/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "d6dd1706c7b0557b385fd8d860f296d4816cfc1e19ab586433a55e7507164c81"
+              },
+              "entryPoint": "microsoft-azd-extensions-darwin-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-darwin-amd64.zip"
+            },
+            "darwin/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "be3a64699517a9a11e5df929e7859be5b2be75435fd5684ba0725be5d7c1f041"
+              },
+              "entryPoint": "microsoft-azd-extensions-darwin-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-darwin-arm64.zip"
+            },
+            "linux/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "aaa240eb55aa5d68820cf74293167a50c39037c879aaa8d633b1719b17d58851"
+              },
+              "entryPoint": "microsoft-azd-extensions-linux-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-linux-amd64.zip"
+            },
+            "linux/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "e46ab52f0be9490754dd8b730fa2f33fa5b6e699bb76e825108ebf4a2d48ab96"
+              },
+              "entryPoint": "microsoft-azd-extensions-linux-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-linux-arm64.zip"
+            },
+            "windows/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "1f1ab84d0dfdc00230817a106242530ff778b8007cd7bc519ccb8ac61f81deb0"
+              },
+              "entryPoint": "microsoft-azd-extensions-windows-amd64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-windows-amd64.zip"
+            },
+            "windows/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "4ee4de94cd894f0a0aadf86fbc83b36190b7b539136db7da74d6d4ddbc092b5f"
+              },
+              "entryPoint": "microsoft-azd-extensions-windows-arm64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-windows-arm64.zip"
+            }
+          }
+        }
+      ]
+>>>>>>> Stashed changes
     }
   ]
 }
