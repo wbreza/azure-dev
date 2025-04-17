@@ -301,6 +301,70 @@
               "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-windows-arm64.zip"
             }
           }
+        },
+        {
+          "capabilities": [
+            "custom-commands"
+          ],
+          "version": "0.1.2",
+          "usage": "azd ai builder \u003ccommand\u003e [options]",
+          "examples": [
+            {
+              "name": "start",
+              "description": "Provides a guided experience for building AI applications using Azure Developer CLI.",
+              "usage": "azd ai builder start"
+            }
+          ],
+          "artifacts": {
+            "darwin/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "b3cfe8fdef22b20b8be23370ca2b1d1eaf8374b14a55b96448950175a8350ed1"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-darwin-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-darwin-amd64.zip"
+            },
+            "darwin/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "34b412b474a23d40a511f2f8e9065825b9ad3bd36ccfaa25d6777ed67125d8bc"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-darwin-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-darwin-arm64.zip"
+            },
+            "linux/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "5cf30895059a460b69460f37a1c8ffbf8653997770a6e8b10a8b906ec91c2b03"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-linux-amd64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-linux-amd64.zip"
+            },
+            "linux/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "3789d0e4ebe3ea915c04f9eacefadfae379e49598adfd9d1a1ea2829837b3e45"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-linux-arm64",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-linux-arm64.zip"
+            },
+            "windows/amd64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "78b2595ec3dc1117eb71291d87d907c826794dcd8621625a1023dde562bfd2ef"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-windows-amd64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-windows-amd64.zip"
+            },
+            "windows/arm64": {
+              "checksum": {
+                "algorithm": "sha256",
+                "value": "94dc2c2ab981f41218fddf13fe9886e2f4c23d5bb2b2e6f84ace17f6d7a41444"
+              },
+              "entryPoint": "microsoft-azd-ai-builder-windows-arm64.exe",
+              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-windows-arm64.zip"
+            }
+          }
         }
       ]
     },
