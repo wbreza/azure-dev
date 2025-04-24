@@ -1,96 +1,6 @@
 {
   "extensions": [
     {
-      "id": "azd.internal.registry",
-      "namespace": "registry",
-      "displayName": "Extension Registry Generator",
-      "description": "Ability to build, package and publish AZD extensions and registries.",
-      "versions": [
-        {
-          "capabilities": [
-            "custom-commands"
-          ],
-          "version": "0.0.5",
-          "usage": "azd registry package [options]",
-          "examples": [
-            {
-              "name": "package",
-              "description": "Packages an AZD extension for publishing to a registry.",
-              "usage": "azd registry package [options]"
-            }
-          ],
-          "artifacts": {
-            "darwin/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "7997579925b647130f641e30f86444d22998fd9b349fe910e32aeb919b0e1198"
-              },
-              "entryPoint": "azd-internal-registry-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-darwin-amd64.zip"
-            },
-            "darwin/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "5ebba36d9f4f52a27ede3c69c1691e178db600563f014a93efb9fe0c8e3f5536"
-              },
-              "entryPoint": "azd-internal-registry-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-darwin-arm64.zip"
-            },
-            "linux/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "d39c6823c42d20deb30301dda9eeffb0e46cecfcdaae2e76670b1e5d21992df7"
-              },
-              "entryPoint": "azd-internal-registry-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-linux-amd64.zip"
-            },
-            "linux/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "ebae2f21412f6333d906363e884976e36b1625597c6d14202f844b84d3b5a907"
-              },
-              "entryPoint": "azd-internal-registry-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-linux-arm64.zip"
-            },
-            "windows/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "6f55db80a1358481cd56b0b37d435c0308b424897b0c9a84041969dc2dd320c3"
-              },
-              "entryPoint": "azd-internal-registry-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-windows-amd64.zip"
-            },
-            "windows/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "67a52d4d114cd443f09166e02c5bea1973fc3e39013cc5be9826a8a3cdbb4b90"
-              },
-              "entryPoint": "azd-internal-registry-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/azd.internal.registry/0.0.5/azd-internal-registry-windows-arm64.zip"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": "azd.internal.pack",
-      "displayName": "The AZD internal extension pack",
-      "description": "Includes AZD internal extensions",
-      "versions": [
-        {
-          "version": "0.0.1",
-          "usage": "",
-          "examples": null,
-          "dependencies": [
-            {
-              "id": "azd.internal.registry",
-              "version": "latest"
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "microsoft.azd.demo",
       "namespace": "demo",
       "displayName": "Demo Extension",
@@ -101,7 +11,7 @@
             "custom-commands",
             "lifecycle-events"
           ],
-          "version": "0.1.0",
+          "version": "0.2.0",
           "usage": "azd demo \u003ccommand\u003e [options]",
           "examples": [
             {
@@ -119,50 +29,50 @@
             "darwin/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "9eec66c98697a2a63d79a910d4b66027d9cf48774cdad1449083b71406007815"
+                "value": "f60342a699d170978c0454536577440b7ffbfc4262870873e61382fabfa200f2"
               },
               "entryPoint": "microsoft-azd-demo-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-darwin-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-darwin-amd64.zip"
             },
             "darwin/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "276fad0cad8f2458a0db49065711c654e5c41a6b501e57a14fec4ad680c32e83"
+                "value": "a043256c5379086f160c5d6b53660c948ac9b7bcebc3c1238e7b53c9951c189e"
               },
               "entryPoint": "microsoft-azd-demo-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-darwin-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-darwin-arm64.zip"
             },
             "linux/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "2b0ff4441097305b5aa1284afd18cfd2388cf361041b046ac2ef8a5ecd16a372"
+                "value": "d1120ffaec46a1a602ce3683fea355537173a38628d21544d2edb3fb70e11176"
               },
               "entryPoint": "microsoft-azd-demo-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-linux-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-linux-amd64.zip"
             },
             "linux/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "242356e3ae9d1248a786860a4b4a4308a1984bd3a8541790652c5e2e92c9ce4c"
+                "value": "835c7f1a2a16ffbd0047b2a2c3192b99a0d374b521e2d4d38dbc21d913cfc5f6"
               },
               "entryPoint": "microsoft-azd-demo-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-linux-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-linux-arm64.zip"
             },
             "windows/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "30658218a68841faabff4bbda19be107d40f0e33a85fe55d6183f914862e9b4c"
+                "value": "9b6d2b730e6039c3f9f294ed01691a2b067440f3a596f5e58317a7b622abaae0"
               },
               "entryPoint": "microsoft-azd-demo-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-windows-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-windows-amd64.zip"
             },
             "windows/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "8dcc309eab6a698d812e36c1f824ee822b2b10661032131ae679b58c157efaf5"
+                "value": "4a0b20cfa81fd2d7fe7ed51937548eb0af1ae4885cd9da8c91788a851d4f333d"
               },
               "entryPoint": "microsoft-azd-demo-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.demo/0.1.0/microsoft-azd-demo-windows-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-demo_0.2.0/microsoft-azd-demo-windows-arm64.zip"
             }
           }
         }
@@ -191,178 +101,50 @@
             "darwin/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "562670633f0dfcb3c4f14c59bf2f63a2ffc1ba23230f6dad4a8afa8aaed6bf1b"
+                "value": "349e96c151af2636fae3acb47a0d1f3f4b89c9cd5a79bf7b2e01dc36ba5a3fa8"
               },
               "entryPoint": "microsoft-azd-ai-builder-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-darwin-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-darwin-amd64.zip"
             },
             "darwin/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "67154c88560b709a4139349494af9a336cea59e086d7b3d9045ebbba7b904353"
+                "value": "f89926ba357a2ab97d6dcd61be452987095128468bb42182a8a8f867a41d8861"
               },
               "entryPoint": "microsoft-azd-ai-builder-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-darwin-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-darwin-arm64.zip"
             },
             "linux/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "1ccd93468f027b6c8dea80e1b2054b4156ce2e6c97e5972b5b375ec1036ec1a7"
+                "value": "a000a539ad3c4b3c394775866a82e2a3fec42997e7be6c1e42a77c5652531966"
               },
               "entryPoint": "microsoft-azd-ai-builder-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-linux-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-linux-amd64.zip"
             },
             "linux/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "59ef8cb377d51deaa34c2bc5e362570db68732dd84d90be80d90f820c54ee821"
+                "value": "3cc04b42440a185ec1cde20634e1ad9bf13b54f1a2a3033fad2cc3f5f261e164"
               },
               "entryPoint": "microsoft-azd-ai-builder-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-linux-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-linux-arm64.zip"
             },
             "windows/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "b78950514b7bbea8651d1888eb6fb62da4c73f4042e32d8a7636e235f3cfef93"
+                "value": "389b1d71574f5978484e74b7bd44f291f275f46ade7c91c68a54c2708d2df3bd"
               },
               "entryPoint": "microsoft-azd-ai-builder-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-windows-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-windows-amd64.zip"
             },
             "windows/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "7757e3e1728c5b99d7382987d1efd248c5ec8f1cb2e4a1adc88fa4dc81f1e9af"
+                "value": "689220b5db67602a3fae56f8595f932a07d882b5025d628491eecf800ddcc3f4"
               },
               "entryPoint": "microsoft-azd-ai-builder-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.0/microsoft-azd-ai-builder-windows-arm64.zip"
-            }
-          }
-        },
-        {
-          "capabilities": [
-            "custom-commands"
-          ],
-          "version": "0.1.1",
-          "usage": "azd ai \u003ccommand\u003e [options]",
-          "examples": [
-            {
-              "name": "start",
-              "description": "Provides a guided experience for building AI applications using Azure Developer CLI.",
-              "usage": "azd ai start"
-            }
-          ],
-          "artifacts": {
-            "darwin/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "3cd591b45ffcfd2acb27b5c57ca511b7f633fd6d50e7e0310a10fd9df5b076d0"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-darwin-amd64.zip"
-            },
-            "darwin/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "8a6686501f2088cd4c7489c6da1bdc8fe9fdbead42a5213b41dd46397489a041"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-darwin-arm64.zip"
-            },
-            "linux/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "8e1ba4a5722c9398ad707c250b7aeedd21382bf44d993cd8e8db4f9c0a11f7df"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-linux-amd64.zip"
-            },
-            "linux/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "29737ca35e4eca8f891c98afe70bfb8859d4823afbcea29fb459e495d4b740e4"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-linux-arm64.zip"
-            },
-            "windows/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "48244fbfbd66fad380c4d7ecd163b1e51f39ba171050d7080d913968a2dbba31"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-windows-amd64.zip"
-            },
-            "windows/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "0ddba91af8deee8dd5f81fe7dded22e286b4aff70351e58ba2a1920baf58f74e"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.1/microsoft-azd-ai-builder-windows-arm64.zip"
-            }
-          }
-        },
-        {
-          "capabilities": [
-            "custom-commands"
-          ],
-          "version": "0.1.2",
-          "usage": "azd ai builder \u003ccommand\u003e [options]",
-          "examples": [
-            {
-              "name": "start",
-              "description": "Provides a guided experience for building AI applications using Azure Developer CLI.",
-              "usage": "azd ai builder start"
-            }
-          ],
-          "artifacts": {
-            "darwin/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "b3cfe8fdef22b20b8be23370ca2b1d1eaf8374b14a55b96448950175a8350ed1"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-darwin-amd64.zip"
-            },
-            "darwin/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "34b412b474a23d40a511f2f8e9065825b9ad3bd36ccfaa25d6777ed67125d8bc"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-darwin-arm64.zip"
-            },
-            "linux/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "5cf30895059a460b69460f37a1c8ffbf8653997770a6e8b10a8b906ec91c2b03"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-linux-amd64.zip"
-            },
-            "linux/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "3789d0e4ebe3ea915c04f9eacefadfae379e49598adfd9d1a1ea2829837b3e45"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-linux-arm64.zip"
-            },
-            "windows/amd64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "78b2595ec3dc1117eb71291d87d907c826794dcd8621625a1023dde562bfd2ef"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-windows-amd64.zip"
-            },
-            "windows/arm64": {
-              "checksum": {
-                "algorithm": "sha256",
-                "value": "94dc2c2ab981f41218fddf13fe9886e2f4c23d5bb2b2e6f84ace17f6d7a41444"
-              },
-              "entryPoint": "microsoft-azd-ai-builder-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.ai.builder/0.1.2/microsoft-azd-ai-builder-windows-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-ai-builder_0.1.0/microsoft-azd-ai-builder-windows-arm64.zip"
             }
           }
         }
@@ -378,7 +160,7 @@
           "capabilities": [
             "custom-commands"
           ],
-          "version": "0.0.3",
+          "version": "0.2.0",
           "usage": "azd x \u003ccommand\u003e [options]",
           "examples": [
             {
@@ -392,9 +174,14 @@
               "usage": "azd x build"
             },
             {
-              "name": "package",
+              "name": "pack",
               "description": "Package the AZD extension project into a distributable format and add to local registry.",
-              "usage": "azd x package"
+              "usage": "azd x pack"
+            },
+            {
+              "name": "release",
+              "description": "Create an new release of the AZD extension project to a Github repository.",
+              "usage": "azd x release"
             },
             {
               "name": "watch",
@@ -406,50 +193,50 @@
             "darwin/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "d6dd1706c7b0557b385fd8d860f296d4816cfc1e19ab586433a55e7507164c81"
+                "value": "6227645877f845e8dba5f31a892319e9dc5842eeba10f44a87ae8a78b7dc7d16"
               },
               "entryPoint": "microsoft-azd-extensions-darwin-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-darwin-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-darwin-amd64.zip"
             },
             "darwin/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "be3a64699517a9a11e5df929e7859be5b2be75435fd5684ba0725be5d7c1f041"
+                "value": "670f8407255fa71d9c652b672772d7540864c95012c0d6043f1816e70fb76c63"
               },
               "entryPoint": "microsoft-azd-extensions-darwin-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-darwin-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-darwin-arm64.zip"
             },
             "linux/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "aaa240eb55aa5d68820cf74293167a50c39037c879aaa8d633b1719b17d58851"
+                "value": "477948022a770a4bf3201706284395fd3b54e34b5de59c69648fd249c1fd4ca7"
               },
               "entryPoint": "microsoft-azd-extensions-linux-amd64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-linux-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-linux-amd64.zip"
             },
             "linux/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "e46ab52f0be9490754dd8b730fa2f33fa5b6e699bb76e825108ebf4a2d48ab96"
+                "value": "c4d7b436a6dc45338fb5db4972a2626533c84e1cc6d832d03e7ba496a330258d"
               },
               "entryPoint": "microsoft-azd-extensions-linux-arm64",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-linux-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-linux-arm64.zip"
             },
             "windows/amd64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "1f1ab84d0dfdc00230817a106242530ff778b8007cd7bc519ccb8ac61f81deb0"
+                "value": "cac38ab2ab5cee470eb3011f7a8b778f1040996796b12ec9db5c047df8a9731e"
               },
               "entryPoint": "microsoft-azd-extensions-windows-amd64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-windows-amd64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-windows-amd64.zip"
             },
             "windows/arm64": {
               "checksum": {
                 "algorithm": "sha256",
-                "value": "4ee4de94cd894f0a0aadf86fbc83b36190b7b539136db7da74d6d4ddbc092b5f"
+                "value": "27799e4110512c1a9da86c64214edb8d0e83acf330c4364932dac48dbd44ee3c"
               },
               "entryPoint": "microsoft-azd-extensions-windows-arm64.exe",
-              "url": "https://raw.githubusercontent.com/wbreza/azure-dev/refs/heads/registry-dev/cli/azd/extensions/artifacts/microsoft.azd.extensions/0.0.3/microsoft-azd-extensions-windows-arm64.zip"
+              "url": "https://github.com/wbreza/azd-extensions/releases/download/azd-ext-microsoft-azd-extensions_0.2.0/microsoft-azd-extensions-windows-arm64.zip"
             }
           }
         }
