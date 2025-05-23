@@ -171,12 +171,14 @@ func newExtensionListAction(
 }
 
 type extensionListItem struct {
-	Id        string `json:"id"`
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Version   string `json:"version"`
-	Installed bool   `json:"installed"`
-	Source    string `json:"source"`
+	Id          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Namespace   string   `json:"namespace"`
+	Version     string   `json:"version"`
+	Installed   bool     `json:"installed"`
+	Source      string   `json:"source"`
+	Tags        []string `json:"tags"`
 }
 
 func (a *extensionListAction) Run(ctx context.Context) (*actions.ActionResult, error) {
@@ -219,12 +221,14 @@ func (a *extensionListAction) Run(ctx context.Context) (*actions.ActionResult, e
 		}
 
 		extensionRows = append(extensionRows, extensionListItem{
-			Id:        extension.Id,
-			Name:      extension.DisplayName,
-			Namespace: extension.Namespace,
-			Version:   version,
-			Source:    extension.Source,
-			Installed: installed,
+			Id:          extension.Id,
+			Name:        extension.DisplayName,
+			Description: extension.Description,
+			Namespace:   extension.Namespace,
+			Version:     version,
+			Source:      extension.Source,
+			Installed:   installed,
+			Tags:        extension.Tags,
 		})
 	}
 
