@@ -38,9 +38,9 @@ func NewRootCommand() *cobra.Command {
 }
 
 type AiModelConfig struct {
-	Endpoint       string `json:"endpoint"`
-	ApiKey         string `json:"apiKey"`
-	DeploymentName string `json:"deploymentName"`
+	Endpoint string `json:"endpoint"`
+	Token    string `json:"token"`
+	Model    string `json:"model"`
 }
 
 // runAIAgent creates and runs the enhanced AI agent using LangChain Go
@@ -59,7 +59,7 @@ func runAIAgent(ctx context.Context, args []string, debug bool) error {
 	getSectionResponse, err := azdClient.
 		UserConfig().
 		GetSection(ctx, &azdext.GetUserConfigSectionRequest{
-			Path: "ai.chat.model",
+			Path: "ai.agent.model.azure",
 		})
 	if err != nil {
 		return fmt.Errorf("AI model configuration not found, %w", err)
@@ -90,31 +90,31 @@ func runAIAgent(ctx context.Context, args []string, debug bool) error {
 	actionLogger := logging.NewActionLogger(logging.WithDebug(debug))
 
 	// Try different deployment names
-	if aiConfig.Endpoint != "" && aiConfig.ApiKey != "" {
+	if aiConfig.Endpoint != "" && aiConfig.Token != "" {
 		// Use Azure OpenAI with proper configuration
-		fmt.Printf("🔵 Trying Azure OpenAI with deployment: %s\n", aiConfig.DeploymentName)
+		fmt.Printf("🔵 Trying Azure OpenAI with deployment: %s\n", aiConfig.Model)
 
 		defaultModel, err = openai.New(
-			openai.WithToken(aiConfig.ApiKey),
-			openai.WithBaseURL(aiConfig.Endpoint+"/"),
+			openai.WithToken(aiConfig.Token),
+			openai.WithBaseURL(aiConfig.Endpoint),
 			openai.WithAPIType(openai.APITypeAzure),
 			openai.WithAPIVersion(azureAPIVersion),
-			openai.WithModel(aiConfig.DeploymentName),
+			openai.WithModel(aiConfig.Model),
 			openai.WithCallback(actionLogger),
 		)
 
 		if err == nil {
-			fmt.Printf("✅ Successfully connected with deployment: %s\n", aiConfig.DeploymentName)
+			fmt.Printf("✅ Successfully connected with deployment: %s\n", aiConfig.Model)
 		} else {
-			fmt.Printf("❌ Failed with deployment %s: %v\n", aiConfig.DeploymentName, err)
+			fmt.Printf("❌ Failed with deployment %s: %v\n", aiConfig.Model, err)
 		}
 
 		samplingModel, err = openai.New(
-			openai.WithToken(aiConfig.ApiKey),
+			openai.WithToken(aiConfig.Token),
 			openai.WithBaseURL(aiConfig.Endpoint+"/"),
 			openai.WithAPIType(openai.APITypeAzure),
 			openai.WithAPIVersion(azureAPIVersion),
-			openai.WithModel(aiConfig.DeploymentName),
+			openai.WithModel(aiConfig.Model),
 		)
 
 		if err != nil {
