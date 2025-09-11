@@ -4,6 +4,8 @@
 package agent
 
 import (
+	"context"
+
 	"github.com/azure/azure-dev/cli/azd/internal/agent/consent"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/logging"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/security"
@@ -38,7 +40,7 @@ func NewAgentFactory(
 }
 
 // CreateAgent creates a new agent instance
-func (f *AgentFactory) Create(opts ...AgentCreateOption) (Agent, error) {
+func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (Agent, error) {
 	// Create a daily log file for all agent activity
 	fileLogger, loggerCleanup, err := logging.NewFileLoggerDefault()
 	if err != nil {
@@ -94,7 +96,7 @@ func (f *AgentFactory) Create(opts ...AgentCreateOption) (Agent, error) {
 	allTools := []common.AnnotatedTool{}
 
 	for _, toolLoader := range toolLoaders {
-		categoryTools, err := toolLoader.LoadTools()
+		categoryTools, err := toolLoader.LoadTools(ctx)
 		if err != nil {
 			defer cleanup()
 			return nil, err
