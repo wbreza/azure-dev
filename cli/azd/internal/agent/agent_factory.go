@@ -93,20 +93,10 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		// Add more excluded tools here as needed
 	}
 
-	includedTools := map[string]bool{
-		"bestpractices":  true,
-		"bicepschema":    true,
-		"cloudarchitect": true,
-		"documentation":  true,
-		"group":          true,
-		"role":           true,
-		"subscription":   true,
-	}
-
-	filteredTools := []common.AnnotatedTool{}
+	allTools := []common.AnnotatedTool{}
 
 	for _, toolLoader := range toolLoaders {
-		categoryTools, err := toolLoader.LoadTools(ctx)
+		categoryTools, err := toolLoader.LoadTools()
 		if err != nil {
 			defer cleanup()
 			return nil, err
@@ -114,18 +104,14 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 
 		// Filter out excluded tools
 		for _, tool := range categoryTools {
-			if excludedTools[tool.Name()] {
-				continue
-			}
-
-			if tool.Server() == "azd" || tool.Server() == "built-in" || includedTools[tool.Name()] {
-				filteredTools = append(filteredTools, tool)
+			if !excludedTools[tool.Name()] {
+				allTools = append(allTools, tool)
 			}
 		}
 	}
 
 	// Wraps all tools in consent workflow
-	protectedTools := f.consentManager.WrapTools(filteredTools)
+	protectedTools := f.consentManager.WrapTools(allTools)
 
 	// Finalize agent creation options
 	allOptions := []AgentCreateOption{}
