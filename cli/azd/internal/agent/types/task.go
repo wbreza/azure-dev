@@ -58,9 +58,9 @@ type Task struct {
 
 // PlannedToolCall represents a tool invocation planned for a task
 type PlannedToolCall struct {
-	ToolName   string         `json:"toolName"`
-	Parameters map[string]any `json:"parameters"`
-	Reasoning  string         `json:"reasoning"`
+	ToolName  string `json:"toolName"`
+	Input     any    `json:"input"`
+	Reasoning string `json:"reasoning"`
 }
 
 // ExecutionPlan represents the complete plan for achieving a goal

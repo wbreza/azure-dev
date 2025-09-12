@@ -24,12 +24,12 @@ type OrchestratorAgent struct {
 	validationAgent *ValidationAgent
 
 	// Configuration
-	config *OrchestratorAgentConfig
+	config *AgentConfig
 }
 
 // NewOrchestratorAgent creates a new orchestrator
-func NewOrchestratorAgent(opts ...OrchestratorAgentOption) *OrchestratorAgent {
-	config := &OrchestratorAgentConfig{}
+func NewOrchestratorAgent(opts ...AgentOption) *OrchestratorAgent {
+	config := &AgentConfig{}
 
 	for _, option := range opts {
 		option(config)
@@ -45,9 +45,9 @@ func NewOrchestratorAgent(opts ...OrchestratorAgentOption) *OrchestratorAgent {
 
 	return &OrchestratorAgent{
 		config:          config,
-		planningAgent:   NewPlanningAgent(WithOrchestrationConfig(config)),
-		executionAgent:  NewExecutionAgent(WithOrchestrationConfig(config)),
-		validationAgent: NewValidationAgent(WithOrchestrationConfig(config)),
+		planningAgent:   NewPlanningAgent(WithConfig(config)),
+		executionAgent:  NewExecutionAgent(WithConfig(config)),
+		validationAgent: NewValidationAgent(WithConfig(config)),
 	}
 }
 
@@ -83,6 +83,15 @@ func (a *OrchestratorAgent) SendMessage(ctx context.Context, args ...string) (st
 	return summary, nil
 }
 
+// Stop terminates the agent and performs any necessary cleanup
+func (a *OrchestratorAgent) Stop() error {
+	if a.config.cleanupFunc != nil {
+		return a.config.cleanupFunc()
+	}
+
+	return nil
+}
+
 // Execute runs the enhanced ReAct loop to achieve the given goal
 func (a *OrchestratorAgent) execute(ctx context.Context, userMessage string) (*types.ExecutionResult, error) {
 	// Append user message to conversation buffer
@@ -96,7 +105,7 @@ func (a *OrchestratorAgent) execute(ctx context.Context, userMessage string) (*t
 	}
 
 	// Create initial plan
-	planningResult, err := a.planningAgent.CreatePlan(ctx, userMessage, a.config.workingMemory)
+	planningResult, err := a.planningAgent.CreatePlan(ctx, userMessage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create initial plan: %w", err)
 	}
@@ -145,78 +154,8 @@ func (a *OrchestratorAgent) execute(ctx context.Context, userMessage string) (*t
 	}
 }
 
-func (a *OrchestratorAgent) renderThoughts(ctx context.Context) (func(), error) {
-	var latestThought string
-
-	spinner := uxlib.NewSpinner(&uxlib.SpinnerOptions{
-		Text: "Thinking...",
-	})
-
-	canvas := uxlib.NewCanvas(
-		spinner,
-		uxlib.NewVisualElement(func(printer uxlib.Printer) error {
-			printer.Fprintln()
-			printer.Fprintln()
-
-			if latestThought != "" {
-				printer.Fprintln(color.HiBlackString(latestThought))
-				printer.Fprintln()
-				printer.Fprintln()
-			}
-
-			return nil
-		}))
-
-	go func() {
-		defer canvas.Clear()
-
-		var latestAction string
-		var latestActionInput string
-		var spinnerText string
-
-		for {
-
-			select {
-			case thought := <-a.config.thoughtChan:
-				if thought.Action != "" {
-					latestAction = thought.Action
-					latestActionInput = thought.ActionInput
-				}
-				if thought.Thought != "" {
-					latestThought = thought.Thought
-				}
-			case <-ctx.Done():
-				return
-			case <-time.After(200 * time.Millisecond):
-			}
-
-			// Update spinner text
-			if latestAction == "" {
-				spinnerText = "Thinking..."
-			} else {
-				spinnerText = fmt.Sprintf("Running %s tool", color.GreenString(latestAction))
-				if latestActionInput != "" {
-					spinnerText += " with " + color.GreenString(latestActionInput)
-				}
-
-				spinnerText += "..."
-			}
-
-			spinner.UpdateText(spinnerText)
-			canvas.Update()
-		}
-	}()
-
-	cleanup := func() {
-		canvas.Clear()
-		canvas.Close()
-	}
-
-	return cleanup, canvas.Run()
-}
-
 // executeTaskBasedPlan handles the main ReAct loop for task-based execution
-func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context, goal string) (*types.ExecutionResult, error) {
+func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context, userMessage string) (*types.ExecutionResult, error) {
 	var (
 		iteration      = 0
 		failedCycles   = 0
@@ -234,7 +173,7 @@ func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context, goal strin
 		// Plan/Replan if needed
 		needsReplanning := a.needsReplanning(lastValidation, iteration)
 		if needsReplanning {
-			updatedPlan, err := a.planningAgent.UpdatePlan(ctx, a.config.workingMemory)
+			updatedPlan, err := a.planningAgent.UpdatePlan(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update plan on iteration %d: %w", iteration, err)
 			}
@@ -246,7 +185,7 @@ func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context, goal strin
 		}
 
 		// Execute actions
-		_, actionResults, err := a.executionAgent.ExecuteStep(ctx, a.config.workingMemory)
+		_, actionResults, err := a.executionAgent.ExecuteStep(ctx)
 		if err != nil {
 			failedCycles++
 			a.config.workingMemory.AddEvent(memory.ExecutionEvent{
@@ -366,4 +305,121 @@ func (a *OrchestratorAgent) buildResult(status, reason string) *types.ExecutionR
 		TotalIterations:  len(a.config.workingMemory.GetRecentHistory(1000)), // Get all events as proxy for iterations
 		ExecutionHistory: historyInterface,
 	}
+}
+
+// formatExecutionResult converts the execution result into a user-friendly response
+func (a *OrchestratorAgent) formatExecutionResult(result *types.ExecutionResult) string {
+	var response strings.Builder
+
+	switch result.Status {
+	case "message":
+		// Simple message response - just return the message
+		return result.Reason
+
+	case "success":
+		response.WriteString("✅ **Goal Achieved Successfully**\n\n")
+		response.WriteString(fmt.Sprintf("**Goal:** %s\n\n", result.Goal))
+
+		// Show task summary
+		if taskSummary, ok := result.TasksSummary.(memory.TaskStatusDisplay); ok {
+			if len(taskSummary.CompletedTasks) > 0 {
+				response.WriteString("**Completed Tasks:**\n")
+				for _, task := range taskSummary.CompletedTasks {
+					response.WriteString(fmt.Sprintf("- ✓ %s: %s\n", task.ID, task.Brief))
+				}
+				response.WriteString("\n")
+			}
+		}
+
+	case "failed":
+		response.WriteString("❌ **Goal Failed**\n\n")
+		response.WriteString(fmt.Sprintf("**Goal:** %s\n", result.Goal))
+		response.WriteString(fmt.Sprintf("**Reason:** %s\n\n", result.Reason))
+
+	case "timeout":
+		response.WriteString("⏱️ **Goal Timed Out**\n\n")
+		response.WriteString(fmt.Sprintf("**Goal:** %s\n", result.Goal))
+		response.WriteString(fmt.Sprintf("**Iterations:** %d\n", result.TotalIterations))
+		response.WriteString("The agent reached the maximum number of iterations before completing the goal.\n\n")
+
+	default:
+		response.WriteString(fmt.Sprintf("**Status:** %s\n", result.Status))
+		response.WriteString(fmt.Sprintf("**Goal:** %s\n", result.Goal))
+		response.WriteString(fmt.Sprintf("**Reason:** %s\n\n", result.Reason))
+	}
+
+	// Add execution summary for task-based responses
+	response.WriteString(fmt.Sprintf("**Total Iterations:** %d\n", result.TotalIterations))
+
+	return response.String()
+}
+
+func (a *OrchestratorAgent) renderThoughts(ctx context.Context) (func(), error) {
+	var latestThought string
+
+	spinner := uxlib.NewSpinner(&uxlib.SpinnerOptions{
+		Text: "Thinking...",
+	})
+
+	canvas := uxlib.NewCanvas(
+		spinner,
+		uxlib.NewVisualElement(func(printer uxlib.Printer) error {
+			printer.Fprintln()
+			printer.Fprintln()
+
+			if latestThought != "" {
+				printer.Fprintln(color.HiBlackString(latestThought))
+				printer.Fprintln()
+				printer.Fprintln()
+			}
+
+			return nil
+		}))
+
+	go func() {
+		defer canvas.Clear()
+
+		var latestAction string
+		var latestActionInput string
+		var spinnerText string
+
+		for {
+
+			select {
+			case thought := <-a.config.thoughtChan:
+				if thought.Action != "" {
+					latestAction = thought.Action
+					latestActionInput = thought.ActionInput
+				}
+				if thought.Thought != "" {
+					latestThought = thought.Thought
+				}
+			case <-ctx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
+
+			// Update spinner text
+			if latestAction == "" {
+				spinnerText = "Thinking..."
+			} else {
+				spinnerText = fmt.Sprintf("Running %s tool", color.GreenString(latestAction))
+				if latestActionInput != "" {
+					spinnerText += " with " + color.GreenString(latestActionInput)
+				}
+
+				spinnerText += "..."
+			}
+
+			spinner.UpdateText(spinnerText)
+			canvas.Update()
+		}
+	}()
+
+	cleanup := func() {
+		canvas.Clear()
+		canvas.Close()
+	}
+
+	return cleanup, canvas.Run()
 }

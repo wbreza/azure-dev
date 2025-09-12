@@ -19,13 +19,13 @@ var validationPromptTemplate string
 
 // ValidationAgent validates execution results and provides guidance for next steps
 type ValidationAgent struct {
-	model         llms.Model
+	config        *AgentConfig
 	promptBuilder *ConversationalPromptBuilder
 }
 
 // NewValidationAgentWithSharedComponents creates a new validation agent with shared conversation buffer and working memory
-func NewValidationAgent(opts ...OrchestratorAgentOption) *ValidationAgent {
-	config := &OrchestratorAgentConfig{}
+func NewValidationAgent(opts ...AgentOption) *ValidationAgent {
+	config := &AgentConfig{}
 	for _, option := range opts {
 		option(config)
 	}
@@ -38,15 +38,15 @@ func NewValidationAgent(opts ...OrchestratorAgentOption) *ValidationAgent {
 	)
 
 	return &ValidationAgent{
-		model:         config.model,
+		config:        config,
 		promptBuilder: promptBuilder,
 	}
 }
 
 // ValidateExecution analyzes the results of executed actions and provides validation
-func (v *ValidationAgent) ValidateExecution(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
+func (a *ValidationAgent) ValidateExecution(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
 	// Get validation response from LLM
-	response, err := v.getValidationResponse(ctx, workingMemory, actionResults)
+	response, err := a.getValidationResponse(ctx, workingMemory, actionResults)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validation response: %w", err)
 	}
@@ -56,9 +56,9 @@ func (v *ValidationAgent) ValidateExecution(ctx context.Context, workingMemory *
 
 // Private methods
 
-func (v *ValidationAgent) getValidationResponse(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
+func (a *ValidationAgent) getValidationResponse(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
 	// Build messages using the conversational prompt builder
-	messages, err := v.promptBuilder.BuildMessages(ctx, workingMemory)
+	messages, err := a.promptBuilder.BuildMessages(ctx, workingMemory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build validation messages: %w", err)
 	}
@@ -87,10 +87,13 @@ func (v *ValidationAgent) getValidationResponse(ctx context.Context, workingMemo
 	})
 
 	// Get response from LLM
-	response, err := v.model.GenerateContent(ctx, messages)
+	a.config.callbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
+	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
+		a.config.callbacksHandler.HandleLLMError(ctx, err)
 		return nil, fmt.Errorf("failed to generate validation response: %w", err)
 	}
+	a.config.callbacksHandler.HandleLLMGenerateContentEnd(ctx, response)
 
 	// Extract text from response
 	var responseText string
@@ -112,7 +115,7 @@ func (v *ValidationAgent) getValidationResponse(ctx context.Context, workingMemo
 }
 
 // ApplyValidationResults updates working memory based on validation results
-func (v *ValidationAgent) ApplyValidationResults(workingMemory *memory.WorkingMemory, validation *types.ValidationResult) error {
+func (a *ValidationAgent) ApplyValidationResults(workingMemory *memory.WorkingMemory, validation *types.ValidationResult) error {
 	// Update task statuses based on validation
 	for _, taskUpdate := range validation.ProgressAssessment.TaskUpdates {
 		err := workingMemory.UpdateTaskStatus(taskUpdate.TaskID, taskUpdate.NewStatus, taskUpdate.Evidence)

@@ -21,7 +21,7 @@ RESPOND WITH VALID JSON:
   "actions": [
     {
       "tool": "tool_name",
-      "input": {"param": "value"},
+      "input": [tool input],
       "reasoning": "Why you're executing this action"
     }
   ]

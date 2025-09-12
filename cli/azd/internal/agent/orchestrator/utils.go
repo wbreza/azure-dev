@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"github.com/tmc/langchaingo/llms"
 )
 
 // extractJSONFromMarkdown extracts JSON content from markdown-formatted responses.
@@ -89,4 +91,22 @@ func unmarshalJSONResponse(response string, v interface{}) error {
 	}
 
 	return json.Unmarshal([]byte(jsonContent), v)
+}
+
+func fromMessageContents(messages []llms.MessageContent) []string {
+	rawMessages := []string{}
+	for _, msg := range messages {
+		for _, part := range msg.Parts {
+			textParts := []string{}
+			if textPart, ok := part.(*llms.TextContent); ok {
+				textParts = append(textParts, textPart.Text)
+			}
+
+			if len(textParts) > 0 {
+				rawMessages = append(rawMessages, strings.Join(textParts, "\n"))
+			}
+		}
+	}
+
+	return rawMessages
 }

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
@@ -23,15 +22,14 @@ var executionPromptTemplate string
 
 // ExecutionAgent executes tasks using available tools in an enhanced ReAct loop
 type ExecutionAgent struct {
-	model         llms.Model
-	tools         []common.AnnotatedTool
+	config        *AgentConfig
 	toolsMap      map[string]common.AnnotatedTool
 	promptBuilder *ConversationalPromptBuilder
 }
 
 // NewExecutionAgent creates a new execution agent with shared conversation buffer and working memory
-func NewExecutionAgent(opts ...OrchestratorAgentOption) *ExecutionAgent {
-	config := &OrchestratorAgentConfig{}
+func NewExecutionAgent(opts ...AgentOption) *ExecutionAgent {
+	config := &AgentConfig{}
 	for _, option := range opts {
 		option(config)
 	}
@@ -50,23 +48,22 @@ func NewExecutionAgent(opts ...OrchestratorAgentOption) *ExecutionAgent {
 	}
 
 	return &ExecutionAgent{
-		model:         config.model,
-		tools:         config.tools,
+		config:        config,
 		toolsMap:      toolsMap,
 		promptBuilder: promptBuilder,
 	}
 }
 
 // ExecuteStep performs one step of the enhanced ReAct loop
-func (e *ExecutionAgent) ExecuteStep(ctx context.Context, workingMemory *memory.WorkingMemory) (*types.AgentResponse, []types.ActionResult, error) {
+func (a *ExecutionAgent) ExecuteStep(ctx context.Context) (*types.AgentResponse, []types.ActionResult, error) {
 	// Get agent response
-	response, err := e.getAgentResponse(ctx, workingMemory)
+	response, err := a.getAgentResponse(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get agent response: %w", err)
 	}
 
 	// Execute actions
-	actionResults, err := e.executeActions(ctx, response.Actions)
+	actionResults, err := a.executeActions(ctx, response.Actions)
 	if err != nil {
 		return response, nil, fmt.Errorf("failed to execute actions: %w", err)
 	}
@@ -76,16 +73,16 @@ func (e *ExecutionAgent) ExecuteStep(ctx context.Context, workingMemory *memory.
 
 // Private methods
 
-func (e *ExecutionAgent) getAgentResponse(ctx context.Context, workingMemory *memory.WorkingMemory) (*types.AgentResponse, error) {
+func (a *ExecutionAgent) getAgentResponse(ctx context.Context) (*types.AgentResponse, error) {
 	// Build messages using the conversational prompt builder
-	messages, err := e.promptBuilder.BuildMessages(ctx, workingMemory)
+	messages, err := a.promptBuilder.BuildMessages(ctx, a.config.workingMemory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build execution messages: %w", err)
 	}
 
 	// Add current task status as human message for context
-	taskStatus := workingMemory.GetTaskStatusSummary()
-	recentHistory := workingMemory.GetRecentHistory(5)
+	taskStatus := a.config.workingMemory.GetTaskStatusSummary()
+	recentHistory := a.config.workingMemory.GetRecentHistory(5)
 
 	var contextBuilder strings.Builder
 	contextBuilder.WriteString("Current Execution Status:\n")
@@ -102,10 +99,13 @@ func (e *ExecutionAgent) getAgentResponse(ctx context.Context, workingMemory *me
 	})
 
 	// Get response from LLM
-	response, err := e.model.GenerateContent(ctx, messages)
+	a.config.callbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
+	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
+		a.config.callbacksHandler.HandleLLMError(ctx, err)
 		return nil, fmt.Errorf("failed to generate execution response: %w", err)
 	}
+	a.config.callbacksHandler.HandleLLMGenerateContentEnd(ctx, response)
 
 	// Extract text from response
 	var responseText string
@@ -126,11 +126,11 @@ func (e *ExecutionAgent) getAgentResponse(ctx context.Context, workingMemory *me
 	return &agentResponse, nil
 }
 
-func (e *ExecutionAgent) executeActions(ctx context.Context, actions []types.ActionRequest) ([]types.ActionResult, error) {
+func (a *ExecutionAgent) executeActions(ctx context.Context, actions []types.ActionRequest) ([]types.ActionResult, error) {
 	results := make([]types.ActionResult, 0, len(actions))
 
 	for _, action := range actions {
-		result, err := e.executeAction(ctx, action)
+		result, err := a.executeAction(ctx, action)
 		if err != nil {
 			// Don't fail entirely if one action fails - record the error and continue
 			result = types.ActionResult{
@@ -147,11 +147,11 @@ func (e *ExecutionAgent) executeActions(ctx context.Context, actions []types.Act
 	return results, nil
 }
 
-func (e *ExecutionAgent) executeAction(ctx context.Context, action types.ActionRequest) (types.ActionResult, error) {
+func (a *ExecutionAgent) executeAction(ctx context.Context, action types.ActionRequest) (types.ActionResult, error) {
 	startTime := time.Now()
 
 	// Find the tool
-	tool, exists := e.toolsMap[action.Tool]
+	tool, exists := a.toolsMap[action.Tool]
 	if !exists {
 		return types.ActionResult{}, fmt.Errorf("tool %s not found", action.Tool)
 	}
@@ -163,8 +163,12 @@ func (e *ExecutionAgent) executeAction(ctx context.Context, action types.ActionR
 	}
 
 	// Execute the tool
+	a.config.callbacksHandler.HandleToolStart(ctx, string(inputJSON))
+
 	output, err := tool.Call(ctx, string(inputJSON))
 	if err != nil {
+		a.config.callbacksHandler.HandleToolError(ctx, err)
+
 		return types.ActionResult{
 			Tool:      action.Tool,
 			Input:     string(inputJSON),
@@ -173,6 +177,8 @@ func (e *ExecutionAgent) executeAction(ctx context.Context, action types.ActionR
 			Duration:  time.Since(startTime).String(),
 		}, err
 	}
+
+	a.config.callbacksHandler.HandleToolEnd(ctx, output)
 
 	return types.ActionResult{
 		Tool:      action.Tool,
@@ -184,6 +190,6 @@ func (e *ExecutionAgent) executeAction(ctx context.Context, action types.ActionR
 }
 
 // GetTools returns the tools available to this agent (for langchain compatibility)
-func (e *ExecutionAgent) GetTools() []tools.Tool {
-	return common.ToLangChainTools(e.tools)
+func (a *ExecutionAgent) GetTools() []tools.Tool {
+	return common.ToLangChainTools(a.config.tools)
 }

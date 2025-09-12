@@ -4,11 +4,12 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/logging"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
+	"github.com/tmc/langchaingo/callbacks"
 	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
-type OrchestratorAgentConfig struct {
+type AgentConfig struct {
 	tools              []common.AnnotatedTool
 	conversationBuffer *langchainmemory.ConversationBuffer
 	workingMemory      *memory.WorkingMemory
@@ -16,54 +17,68 @@ type OrchestratorAgentConfig struct {
 	maxIterations      int
 	maxFailedCycles    int
 	thoughtChan        chan logging.Thought
+	cleanupFunc        func() error
+	callbacksHandler   callbacks.Handler
 }
 
-type OrchestratorAgentOption func(config *OrchestratorAgentConfig)
+type AgentOption func(config *AgentConfig)
 
-func WithOrchestrationConfig(config *OrchestratorAgentConfig) OrchestratorAgentOption {
-	return func(c *OrchestratorAgentConfig) {
+func WithConfig(config *AgentConfig) AgentOption {
+	return func(c *AgentConfig) {
 		c = config
 	}
 }
 
-func WithOrchestrationTools(tools ...common.AnnotatedTool) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithTools(tools ...common.AnnotatedTool) AgentOption {
+	return func(config *AgentConfig) {
 		config.tools = tools
 	}
 }
 
-func WithOrchestrationHistory(buffer *langchainmemory.ConversationBuffer) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithHistory(buffer *langchainmemory.ConversationBuffer) AgentOption {
+	return func(config *AgentConfig) {
 		config.conversationBuffer = buffer
 	}
 }
 
-func WithOrchestrationMemory(workingMemory *memory.WorkingMemory) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithMemory(workingMemory *memory.WorkingMemory) AgentOption {
+	return func(config *AgentConfig) {
 		config.workingMemory = workingMemory
 	}
 }
 
-func WithOrchestrationModel(model llms.Model) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithModel(model llms.Model) AgentOption {
+	return func(config *AgentConfig) {
 		config.model = model
 	}
 }
 
-func WithOrchestrationMaxIterations(max int) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithMaxIterations(max int) AgentOption {
+	return func(config *AgentConfig) {
 		config.maxIterations = max
 	}
 }
 
-func WithOrchestrationMaxFailedCycles(max int) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithMaxFailedCycles(max int) AgentOption {
+	return func(config *AgentConfig) {
 		config.maxFailedCycles = max
 	}
 }
 
-func WithOrchestrationThoughtChannel(thoughtChan chan logging.Thought) OrchestratorAgentOption {
-	return func(config *OrchestratorAgentConfig) {
+func WithThoughtChannel(thoughtChan chan logging.Thought) AgentOption {
+	return func(config *AgentConfig) {
 		config.thoughtChan = thoughtChan
+	}
+}
+
+func WithCleanup(cleanupFunc func() error) AgentOption {
+	return func(config *AgentConfig) {
+		config.cleanupFunc = cleanupFunc
+	}
+}
+
+func WithCallbacksHandler(handler callbacks.Handler) AgentOption {
+	return func(config *AgentConfig) {
+		config.callbacksHandler = config.callbacksHandler
 	}
 }

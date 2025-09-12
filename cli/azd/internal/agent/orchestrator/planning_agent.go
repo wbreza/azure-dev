@@ -10,11 +10,9 @@ import (
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
-	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
-	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
 //go:embed prompts/planning.txt
@@ -22,8 +20,7 @@ var planningPromptTemplate string
 
 // PlanningAgent creates structured execution plans using LLM reasoning
 type PlanningAgent struct {
-	model         llms.Model
-	tools         []common.AnnotatedTool
+	config        *AgentConfig
 	promptBuilder *ConversationalPromptBuilder
 }
 
@@ -47,8 +44,8 @@ type PlanningTask struct {
 }
 
 // NewPlanningAgent creates a new planning agent
-func NewPlanningAgent(opts ...OrchestratorAgentOption) *PlanningAgent {
-	config := &OrchestratorAgentConfig{}
+func NewPlanningAgent(opts ...AgentOption) *PlanningAgent {
+	config := &AgentConfig{}
 	for _, option := range opts {
 		option(config)
 	}
@@ -61,47 +58,29 @@ func NewPlanningAgent(opts ...OrchestratorAgentOption) *PlanningAgent {
 	)
 
 	return &PlanningAgent{
-		model:         config.model,
-		tools:         config.tools,
-		promptBuilder: promptBuilder,
-	}
-}
-
-// NewPlanningAgentWithSharedComponents creates a new planning agent with shared conversation buffer and working memory
-func NewPlanningAgentWithSharedComponents(llm llms.Model, tools []common.AnnotatedTool, conversationBuffer *langchainmemory.ConversationBuffer, workingMemory *memory.WorkingMemory) *PlanningAgent {
-	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
-	promptBuilder := NewConversationalPromptBuilder(
-		WithSystemPrompt(planningPromptTemplate),
-		WithPromptTools(tools),
-		WithWorkingMemory(StandardWorkingMemoryFormatter),
-		WithConversationBuffer(conversationBuffer),
-	)
-
-	return &PlanningAgent{
-		model:         llm,
-		tools:         tools,
+		config:        config,
 		promptBuilder: promptBuilder,
 	}
 }
 
 // CreatePlan generates a new execution plan for the given goal
-func (p *PlanningAgent) CreatePlan(ctx context.Context, goal string, workingMemory *memory.WorkingMemory) (*types.PlanningResult, error) {
+func (a *PlanningAgent) CreatePlan(ctx context.Context, goal string) (*types.PlanningResult, error) {
 	// Build context from working memory if available
 	context := ""
-	if workingMemory != nil {
-		taskSummary := workingMemory.GetTaskStatusSummary()
+	if a.config.workingMemory != nil {
+		taskSummary := a.config.workingMemory.GetTaskStatusSummary()
 		context = taskSummary.ToPromptFormat()
 	}
 
-	return p.createPlanWithContext(ctx, goal, context)
+	return a.createPlanWithContext(ctx, goal, context)
 }
 
 // UpdatePlan modifies an existing execution plan based on working memory state
-func (p *PlanningAgent) UpdatePlan(ctx context.Context, workingMemory *memory.WorkingMemory) (*types.ExecutionPlan, error) {
-	goal := workingMemory.GetGoal()
+func (a *PlanningAgent) UpdatePlan(ctx context.Context) (*types.ExecutionPlan, error) {
+	goal := a.config.workingMemory.GetGoal()
 
 	// Build context for replanning
-	currentPlan := workingMemory.GetExecutionPlan()
+	currentPlan := a.config.workingMemory.GetExecutionPlan()
 
 	contextBuilder := fmt.Sprintf(`
 CURRENT PLAN STATUS:
@@ -126,7 +105,7 @@ EXISTING TASKS:
 		contextBuilder += fmt.Sprintf("- %s: %s (%s)\n", task.ID, task.Description, status)
 	}
 
-	recentHistory := workingMemory.GetRecentHistory(5)
+	recentHistory := a.config.workingMemory.GetRecentHistory(5)
 	contextBuilder += "\nRECENT EXECUTION HISTORY:\n"
 	for _, event := range recentHistory {
 		contextBuilder += fmt.Sprintf("- %s: %s\n", event.Type, event.Details)
@@ -134,7 +113,7 @@ EXISTING TASKS:
 
 	contextBuilder += "\nPlease update the plan as needed. Keep completed tasks unchanged unless they need to be redone."
 
-	planningResult, err := p.createPlanWithContext(ctx, goal, contextBuilder)
+	planningResult, err := a.createPlanWithContext(ctx, goal, contextBuilder)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +127,7 @@ EXISTING TASKS:
 }
 
 // createPlanWithContext generates a new execution plan for the given goal and context
-func (p *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, context string) (*types.PlanningResult, error) {
+func (a *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, context string) (*types.PlanningResult, error) {
 	// Create working memory for this planning session
 	workingMemory := memory.NewWorkingMemory()
 	workingMemory.SetGoal(goal)
@@ -162,7 +141,7 @@ func (p *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, 
 	}
 
 	// Build messages using the conversational prompt builder
-	messages, err := p.promptBuilder.BuildMessages(ctx, workingMemory)
+	messages, err := a.promptBuilder.BuildMessages(ctx, workingMemory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build planning messages: %w", err)
 	}
@@ -174,10 +153,13 @@ func (p *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, 
 	})
 
 	// Get response from LLM
-	response, err := p.model.GenerateContent(ctx, messages)
+	a.config.callbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
+	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
+		a.config.callbacksHandler.HandleLLMError(ctx, err)
 		return nil, fmt.Errorf("failed to generate planning response: %w", err)
 	}
+	a.config.callbacksHandler.HandleLLMGenerateContentEnd(ctx, response)
 
 	// Extract text from response
 	var responseText string
