@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package agent
+package orchestrator
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 )
 
 //go:embed prompts/validation.txt
@@ -20,29 +19,34 @@ var validationPromptTemplate string
 
 // ValidationAgent validates execution results and provides guidance for next steps
 type ValidationAgent struct {
-	llm            llms.Model
-	promptTemplate prompts.PromptTemplate
+	model         llms.Model
+	promptBuilder *ConversationalPromptBuilder
 }
 
-// NewValidationAgent creates a new validation agent
-func NewValidationAgent(llm llms.Model) *ValidationAgent {
+// NewValidationAgentWithSharedComponents creates a new validation agent with shared conversation buffer and working memory
+func NewValidationAgent(opts ...OrchestratorAgentOption) *ValidationAgent {
+	config := &OrchestratorAgentConfig{}
+	for _, option := range opts {
+		option(config)
+	}
+
+	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
+	promptBuilder := NewConversationalPromptBuilder(
+		WithSystemPrompt(validationPromptTemplate),
+		WithWorkingMemory(DetailedWorkingMemoryFormatter),
+		WithConversationBuffer(config.conversationBuffer),
+	)
+
 	return &ValidationAgent{
-		llm: llm,
-		promptTemplate: prompts.PromptTemplate{
-			Template:       validationPromptTemplate,
-			TemplateFormat: prompts.TemplateFormatGoTemplate,
-			InputVariables: []string{"goal", "taskStatus", "actionResults", "workingMemoryContext"},
-		},
+		model:         config.model,
+		promptBuilder: promptBuilder,
 	}
 }
 
 // ValidateExecution analyzes the results of executed actions and provides validation
 func (v *ValidationAgent) ValidateExecution(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
-	// Build validation context
-	context := v.buildValidationContext(workingMemory, actionResults)
-
 	// Get validation response from LLM
-	response, err := v.getValidationResponse(ctx, context)
+	response, err := v.getValidationResponse(ctx, workingMemory, actionResults)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validation response: %w", err)
 	}
@@ -52,11 +56,17 @@ func (v *ValidationAgent) ValidateExecution(ctx context.Context, workingMemory *
 
 // Private methods
 
-func (v *ValidationAgent) buildValidationContext(workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) map[string]any {
-	taskStatus := workingMemory.GetTaskStatusSummary()
+func (v *ValidationAgent) getValidationResponse(ctx context.Context, workingMemory *memory.WorkingMemory, actionResults []types.ActionResult) (*types.ValidationResult, error) {
+	// Build messages using the conversational prompt builder
+	messages, err := v.promptBuilder.BuildMessages(ctx, workingMemory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build validation messages: %w", err)
+	}
 
-	// Format action results for prompt
+	// Format action results for the human message
 	var resultsBuilder strings.Builder
+	resultsBuilder.WriteString("Execution Results to Validate:\n\n")
+
 	for i, result := range actionResults {
 		resultsBuilder.WriteString(fmt.Sprintf("%d. Tool: %s\n", i+1, result.Tool))
 		resultsBuilder.WriteString(fmt.Sprintf("   Input: %s\n", result.Input))
@@ -68,39 +78,34 @@ func (v *ValidationAgent) buildValidationContext(workingMemory *memory.WorkingMe
 		resultsBuilder.WriteString(fmt.Sprintf("   Duration: %s\n\n", result.Duration))
 	}
 
-	// Get working memory context
-	recentHistory := workingMemory.GetRecentHistory(10)
-	var contextBuilder strings.Builder
-	contextBuilder.WriteString("Recent execution history:\n")
-	for _, event := range recentHistory {
-		contextBuilder.WriteString(fmt.Sprintf("- %s: %s\n", event.Type, event.Details))
-	}
+	resultsBuilder.WriteString("Please analyze these results and provide a validation assessment with task status updates and next step recommendations.")
 
-	return map[string]any{
-		"goal":                 workingMemory.GetGoal(),
-		"taskStatus":           taskStatus.ToPromptFormat(),
-		"actionResults":        resultsBuilder.String(),
-		"workingMemoryContext": contextBuilder.String(),
-	}
-}
-
-func (v *ValidationAgent) getValidationResponse(ctx context.Context, context map[string]any) (*types.ValidationResult, error) {
-	// Generate prompt
-	prompt, err := v.promptTemplate.Format(context)
-	if err != nil {
-		return nil, fmt.Errorf("failed to format validation prompt: %w", err)
-	}
+	// Add the validation request as human message
+	messages = append(messages, llms.MessageContent{
+		Role:  llms.ChatMessageTypeHuman,
+		Parts: []llms.ContentPart{llms.TextPart(resultsBuilder.String())},
+	})
 
 	// Get response from LLM
-	response, err := llms.GenerateFromSinglePrompt(ctx, v.llm, prompt)
+	response, err := v.model.GenerateContent(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate validation response: %w", err)
 	}
 
+	// Extract text from response
+	var responseText string
+	if len(response.Choices) > 0 {
+		responseText = response.Choices[0].Content
+	}
+
+	if responseText == "" {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
 	// Parse JSON response (handle markdown-formatted JSON)
 	var validationResult types.ValidationResult
-	if err := unmarshalJSONResponse(response, &validationResult); err != nil {
-		return nil, fmt.Errorf("failed to parse validation response as JSON: %w\nResponse: %s", err, response)
+	if err := unmarshalJSONResponse(responseText, &validationResult); err != nil {
+		return nil, fmt.Errorf("failed to parse validation response as JSON: %w\nResponse: %s", err, responseText)
 	}
 
 	return &validationResult, nil

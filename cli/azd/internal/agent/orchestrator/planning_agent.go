@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package agent
+package orchestrator
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
+	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
 //go:embed prompts/planning.txt
@@ -22,9 +22,9 @@ var planningPromptTemplate string
 
 // PlanningAgent creates structured execution plans using LLM reasoning
 type PlanningAgent struct {
-	llm            llms.Model
-	tools          []common.AnnotatedTool
-	promptTemplate prompts.PromptTemplate
+	model         llms.Model
+	tools         []common.AnnotatedTool
+	promptBuilder *ConversationalPromptBuilder
 }
 
 // PlanningResponse represents the JSON response expected from the planning LLM
@@ -47,15 +47,40 @@ type PlanningTask struct {
 }
 
 // NewPlanningAgent creates a new planning agent
-func NewPlanningAgent(llm llms.Model, tools []common.AnnotatedTool) *PlanningAgent {
+func NewPlanningAgent(opts ...OrchestratorAgentOption) *PlanningAgent {
+	config := &OrchestratorAgentConfig{}
+	for _, option := range opts {
+		option(config)
+	}
+
+	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
+	promptBuilder := NewConversationalPromptBuilder(
+		WithSystemPrompt(planningPromptTemplate),
+		WithPromptTools(config.tools),
+		WithWorkingMemory(StandardWorkingMemoryFormatter),
+	)
+
 	return &PlanningAgent{
-		llm:   llm,
-		tools: tools,
-		promptTemplate: prompts.PromptTemplate{
-			Template:       planningPromptTemplate,
-			TemplateFormat: prompts.TemplateFormatGoTemplate,
-			InputVariables: []string{"goal", "toolDescriptions", "context"},
-		},
+		model:         config.model,
+		tools:         config.tools,
+		promptBuilder: promptBuilder,
+	}
+}
+
+// NewPlanningAgentWithSharedComponents creates a new planning agent with shared conversation buffer and working memory
+func NewPlanningAgentWithSharedComponents(llm llms.Model, tools []common.AnnotatedTool, conversationBuffer *langchainmemory.ConversationBuffer, workingMemory *memory.WorkingMemory) *PlanningAgent {
+	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
+	promptBuilder := NewConversationalPromptBuilder(
+		WithSystemPrompt(planningPromptTemplate),
+		WithPromptTools(tools),
+		WithWorkingMemory(StandardWorkingMemoryFormatter),
+		WithConversationBuffer(conversationBuffer),
+	)
+
+	return &PlanningAgent{
+		model:         llm,
+		tools:         tools,
+		promptBuilder: promptBuilder,
 	}
 }
 
@@ -124,26 +149,50 @@ EXISTING TASKS:
 
 // createPlanWithContext generates a new execution plan for the given goal and context
 func (p *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, context string) (*types.PlanningResult, error) {
-	// Build the prompt
-	prompt, err := p.promptTemplate.Format(map[string]any{
-		"goal":             goal,
-		"toolDescriptions": toolDescriptions(p.tools),
-		"context":          context,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to format planning prompt: %w", err)
+	// Create working memory for this planning session
+	workingMemory := memory.NewWorkingMemory()
+	workingMemory.SetGoal(goal)
+
+	// Add context as an event if provided
+	if context != "" {
+		workingMemory.AddEvent(memory.ExecutionEvent{
+			Type:    "planning_context",
+			Details: context,
+		})
 	}
 
+	// Build messages using the conversational prompt builder
+	messages, err := p.promptBuilder.BuildMessages(ctx, workingMemory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build planning messages: %w", err)
+	}
+
+	// Add the user goal as the human message
+	messages = append(messages, llms.MessageContent{
+		Role:  llms.ChatMessageTypeHuman,
+		Parts: []llms.ContentPart{llms.TextPart(fmt.Sprintf("User Request: %s", goal))},
+	})
+
 	// Get response from LLM
-	response, err := llms.GenerateFromSinglePrompt(ctx, p.llm, prompt)
+	response, err := p.model.GenerateContent(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate planning response: %w", err)
 	}
 
+	// Extract text from response
+	var responseText string
+	if len(response.Choices) > 0 {
+		responseText = response.Choices[0].Content
+	}
+
+	if responseText == "" {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
 	// Parse JSON response (handle markdown-formatted JSON)
 	var planningResponse PlanningResponse
-	if err := unmarshalJSONResponse(response, &planningResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse planning response as JSON: %w\nResponse: %s", err, response)
+	if err := unmarshalJSONResponse(responseText, &planningResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse planning response as JSON: %w\nResponse: %s", err, responseText)
 	}
 
 	// Create PlanningResult based on response type

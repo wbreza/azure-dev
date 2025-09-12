@@ -8,6 +8,7 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/consent"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/logging"
+	"github.com/azure/azure-dev/cli/azd/internal/agent/orchestrator"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/security"
 	localtools "github.com/azure/azure-dev/cli/azd/internal/agent/tools"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
@@ -123,7 +124,7 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		WithCleanup(cleanup),
 	)
 
-	azdAgent, err := NewEnhancedAzdAiAgent(defaultModelContainer.Model, allOptions...)
+	azdAgent, err := orchestrator.NewOrchestratorAgent(defaultModelContainer.Model, allOptions...)
 	if err != nil {
 		return nil, err
 	}

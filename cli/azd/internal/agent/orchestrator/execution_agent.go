@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-package agent
+package orchestrator
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/prompts"
 	"github.com/tmc/langchaingo/tools"
 )
 
@@ -24,39 +23,44 @@ var executionPromptTemplate string
 
 // ExecutionAgent executes tasks using available tools in an enhanced ReAct loop
 type ExecutionAgent struct {
-	llm            llms.Model
-	tools          []common.AnnotatedTool
-	toolsMap       map[string]common.AnnotatedTool
-	promptTemplate prompts.PromptTemplate
+	model         llms.Model
+	tools         []common.AnnotatedTool
+	toolsMap      map[string]common.AnnotatedTool
+	promptBuilder *ConversationalPromptBuilder
 }
 
-// NewExecutionAgent creates a new execution agent
-func NewExecutionAgent(llm llms.Model, tools []common.AnnotatedTool) *ExecutionAgent {
-	// Create tools map for quick lookup
+// NewExecutionAgent creates a new execution agent with shared conversation buffer and working memory
+func NewExecutionAgent(opts ...OrchestratorAgentOption) *ExecutionAgent {
+	config := &OrchestratorAgentConfig{}
+	for _, option := range opts {
+		option(config)
+	}
+
+	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
+	promptBuilder := NewConversationalPromptBuilder(
+		WithSystemPrompt(executionPromptTemplate),
+		WithPromptTools(config.tools),
+		WithWorkingMemory(StandardWorkingMemoryFormatter),
+		WithConversationBuffer(config.conversationBuffer),
+	)
+
 	toolsMap := make(map[string]common.AnnotatedTool)
-	for _, tool := range tools {
+	for _, tool := range config.tools {
 		toolsMap[tool.Name()] = tool
 	}
 
 	return &ExecutionAgent{
-		llm:      llm,
-		tools:    tools,
-		toolsMap: toolsMap,
-		promptTemplate: prompts.PromptTemplate{
-			Template:       executionPromptTemplate,
-			TemplateFormat: prompts.TemplateFormatGoTemplate,
-			InputVariables: []string{"goal", "taskStatus", "toolDescriptions", "recentHistory"},
-		},
+		model:         config.model,
+		tools:         config.tools,
+		toolsMap:      toolsMap,
+		promptBuilder: promptBuilder,
 	}
 }
 
 // ExecuteStep performs one step of the enhanced ReAct loop
 func (e *ExecutionAgent) ExecuteStep(ctx context.Context, workingMemory *memory.WorkingMemory) (*types.AgentResponse, []types.ActionResult, error) {
-	// Build context for the agent
-	context := e.buildExecutionContext(workingMemory)
-
 	// Get agent response
-	response, err := e.getAgentResponse(ctx, context)
+	response, err := e.getAgentResponse(ctx, workingMemory)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get agent response: %w", err)
 	}
@@ -72,41 +76,51 @@ func (e *ExecutionAgent) ExecuteStep(ctx context.Context, workingMemory *memory.
 
 // Private methods
 
-func (e *ExecutionAgent) buildExecutionContext(workingMemory *memory.WorkingMemory) map[string]any {
+func (e *ExecutionAgent) getAgentResponse(ctx context.Context, workingMemory *memory.WorkingMemory) (*types.AgentResponse, error) {
+	// Build messages using the conversational prompt builder
+	messages, err := e.promptBuilder.BuildMessages(ctx, workingMemory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build execution messages: %w", err)
+	}
+
+	// Add current task status as human message for context
 	taskStatus := workingMemory.GetTaskStatusSummary()
 	recentHistory := workingMemory.GetRecentHistory(5)
 
-	// Format recent history for prompt
-	var historyBuilder strings.Builder
+	var contextBuilder strings.Builder
+	contextBuilder.WriteString("Current Execution Status:\n")
+	contextBuilder.WriteString(taskStatus.ToPromptFormat())
+	contextBuilder.WriteString("\n\nRecent Activity:\n")
 	for _, event := range recentHistory {
-		historyBuilder.WriteString(fmt.Sprintf("- %s: %s\n", event.Type, event.Details))
+		contextBuilder.WriteString(fmt.Sprintf("- %s: %s\n", event.Type, event.Details))
 	}
+	contextBuilder.WriteString("\nPlease analyze the current situation and determine the next action to take.")
 
-	return map[string]any{
-		"goal":             workingMemory.GetGoal(),
-		"taskStatus":       taskStatus.ToPromptFormat(),
-		"toolDescriptions": toolDescriptions(e.tools),
-		"recentHistory":    historyBuilder.String(),
-	}
-}
-
-func (e *ExecutionAgent) getAgentResponse(ctx context.Context, context map[string]any) (*types.AgentResponse, error) {
-	// Generate prompt
-	prompt, err := e.promptTemplate.Format(context)
-	if err != nil {
-		return nil, fmt.Errorf("failed to format execution prompt: %w", err)
-	}
+	messages = append(messages, llms.MessageContent{
+		Role:  llms.ChatMessageTypeHuman,
+		Parts: []llms.ContentPart{llms.TextPart(contextBuilder.String())},
+	})
 
 	// Get response from LLM
-	response, err := llms.GenerateFromSinglePrompt(ctx, e.llm, prompt)
+	response, err := e.model.GenerateContent(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate execution response: %w", err)
 	}
 
+	// Extract text from response
+	var responseText string
+	if len(response.Choices) > 0 {
+		responseText = response.Choices[0].Content
+	}
+
+	if responseText == "" {
+		return nil, fmt.Errorf("empty response from LLM")
+	}
+
 	// Parse JSON response (handle markdown-formatted JSON)
 	var agentResponse types.AgentResponse
-	if err := unmarshalJSONResponse(response, &agentResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse agent response as JSON: %w\nResponse: %s", err, response)
+	if err := unmarshalJSONResponse(responseText, &agentResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse agent response as JSON: %w\nResponse: %s", err, responseText)
 	}
 
 	return &agentResponse, nil

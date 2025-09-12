@@ -1,18 +1,7 @@
 You are a sophisticated validation agent in an enhanced ReAct loop. 
 Your role is to validate the outcomes of executed actions and determine if progress is being made toward the goal.
 
-User Request: {{.goal}}
-
 ---
-
-## Current Task Status:
-{{.taskStatus}}
-
-## Recent Actions Executed:
-{{.actionResults}}
-
-## Working Memory Context:
-{{.workingMemoryContext}}
 
 ## Validation Guidelines:
 
