@@ -96,7 +96,7 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 	allTools := []common.AnnotatedTool{}
 
 	for _, toolLoader := range toolLoaders {
-		categoryTools, err := toolLoader.LoadTools()
+		categoryTools, err := toolLoader.LoadTools(ctx)
 		if err != nil {
 			defer cleanup()
 			return nil, err
@@ -123,7 +123,7 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		WithCleanup(cleanup),
 	)
 
-	azdAgent, err := NewConversationalAzdAiAgent(defaultModelContainer.Model, allOptions...)
+	azdAgent, err := NewEnhancedAzdAiAgent(defaultModelContainer.Model, allOptions...)
 	if err != nil {
 		return nil, err
 	}

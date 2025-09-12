@@ -122,6 +122,7 @@ func NewRootCmd(
 
 	completionActions(root)
 	configActions(root, opts)
+	copilotActions(root)
 	envActions(root)
 	infraActions(root)
 	pipelineActions(root)
