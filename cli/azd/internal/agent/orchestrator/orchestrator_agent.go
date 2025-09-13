@@ -147,7 +147,7 @@ func (a *OrchestratorAgent) execute(ctx context.Context, userMessage string) (*t
 		})
 
 		// Continue with task execution
-		return a.executeTaskBasedPlan(ctx, userMessage)
+		return a.executeTaskBasedPlan(ctx)
 
 	default:
 		return nil, fmt.Errorf("unknown planning response type: %s", planningResult.ResponseType)
@@ -155,138 +155,192 @@ func (a *OrchestratorAgent) execute(ctx context.Context, userMessage string) (*t
 }
 
 // executeTaskBasedPlan handles the main ReAct loop for task-based execution
-func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context, userMessage string) (*types.ExecutionResult, error) {
-	var (
-		iteration      = 0
-		failedCycles   = 0
-		lastValidation *types.ValidationResult
-	)
+func (a *OrchestratorAgent) executeTaskBasedPlan(ctx context.Context) (*types.ExecutionResult, error) {
+	plan := a.config.workingMemory.GetExecutionPlan()
+	if plan == nil {
+		return nil, fmt.Errorf("no execution plan available")
+	}
 
-	for iteration < a.config.maxIterations {
-		iteration++
-
-		// Check if goal is achieved
-		if a.isGoalAchieved() {
-			break
+	// Execute tasks in sequence
+	for _, task := range plan.Tasks {
+		if task.Status == types.TaskComplete {
+			continue // Skip already completed tasks
 		}
 
-		// Plan/Replan if needed
-		needsReplanning := a.needsReplanning(lastValidation, iteration)
-		if needsReplanning {
-			updatedPlan, err := a.planningAgent.UpdatePlan(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to update plan on iteration %d: %w", iteration, err)
-			}
-			a.config.workingMemory.SetExecutionPlan(updatedPlan)
-			a.config.workingMemory.AddEvent(memory.ExecutionEvent{
-				Type:    "plan_updated",
-				Details: fmt.Sprintf("Updated plan on iteration %d", iteration),
-			})
-		}
-
-		// Execute actions
-		_, actionResults, err := a.executionAgent.ExecuteStep(ctx)
+		// Delegate complete task execution to ExecutionAgent
+		taskResult, err := a.executeTaskWithValidation(ctx, task)
 		if err != nil {
-			failedCycles++
-			a.config.workingMemory.AddEvent(memory.ExecutionEvent{
-				Type:    "execution_failed",
-				Details: fmt.Sprintf("Execution failed on iteration %d: %v", iteration, err),
-			})
-
-			if failedCycles >= a.config.maxFailedCycles {
-				result := a.buildResult("failed", fmt.Sprintf("Too many consecutive failures (%d)", failedCycles))
-				// Save failure result to conversation buffer
-				if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, result.Reason); err != nil {
-					// Log error but don't fail the request
-					fmt.Printf("Warning: failed to save failure result to conversation: %v\n", err)
-				}
-				return result, nil
+			// Task execution failed, build failed result
+			result := a.buildResult("failed", fmt.Sprintf("Task %s failed: %v", task.ID, err))
+			if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, result.Reason); err != nil {
+				fmt.Printf("Warning: failed to save failure result to conversation: %v\n", err)
 			}
-			continue
+			return result, err
 		}
 
-		// Record execution
-		a.config.workingMemory.AddEvent(memory.ExecutionEvent{
-			Type:    "execution_completed",
-			Details: fmt.Sprintf("Executed %d actions on iteration %d", len(actionResults), iteration),
-		})
-
-		// Validate results
-		validation, err := a.validationAgent.ValidateExecution(ctx, a.config.workingMemory, actionResults)
-		if err != nil {
-			return nil, fmt.Errorf("failed to validate execution on iteration %d: %w", iteration, err)
-		}
-
-		// Apply validation results to working memory
-		err = a.validationAgent.ApplyValidationResults(a.config.workingMemory, validation)
-		if err != nil {
-			return nil, fmt.Errorf("failed to apply validation results on iteration %d: %w", iteration, err)
-		}
-
-		lastValidation = validation
-
-		// Handle validation results
-		if validation.ValidationResult == "failure" {
-			failedCycles++
-			if failedCycles >= a.config.maxFailedCycles {
-				result := a.buildResult("failed", "Validation indicated failure too many times")
-				// Save validation failure result to conversation buffer
-				if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, result.Reason); err != nil {
-					// Log error but don't fail the request
-					fmt.Printf("Warning: failed to save validation failure result to conversation: %v\n", err)
-				}
-				return result, nil
-			}
-		} else {
-			failedCycles = 0 // Reset failure counter on success
+		// Add task summary to high-level conversation
+		taskSummary := fmt.Sprintf("Task %s completed: %s. Evidence: %s",
+			taskResult.TaskID, taskResult.Reasoning, strings.Join(taskResult.Evidence, "; "))
+		if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, taskSummary); err != nil {
+			fmt.Printf("Warning: failed to add task summary to conversation: %v\n", err)
 		}
 	}
 
-	// Determine final result
-	var result *types.ExecutionResult
-	if iteration >= a.config.maxIterations {
-		result = a.buildResult("timeout", "Maximum iterations reached")
-	} else {
-		result = a.buildResult("success", "Goal achieved")
-	}
-
-	// Save final result to conversation buffer
+	// All tasks completed successfully
+	result := a.buildResult("success", "All tasks completed successfully")
 	if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, result.Reason); err != nil {
-		// Log error but don't fail the request
-		fmt.Printf("Warning: failed to save final result to conversation: %v\n", err)
+		fmt.Printf("Warning: failed to save success result to conversation: %v\n", err)
 	}
 
 	return result, nil
 }
 
+// executeTaskWithValidation executes a task using ExecutionAgent and validates the result
+func (a *OrchestratorAgent) executeTaskWithValidation(ctx context.Context, task *types.Task) (*types.TaskExecutionResult, error) {
+	maxValidationRetries := 3
+
+	for validationRetry := 0; validationRetry < maxValidationRetries; validationRetry++ {
+		// Mark task as in progress
+		if err := a.config.workingMemory.UpdateTaskStatus(task.ID, "in_progress", "Starting task execution"); err != nil {
+			return nil, fmt.Errorf("failed to update task status to in_progress: %w", err)
+		}
+
+		// Execute task using ExecutionAgent
+		taskResult, err := a.executionAgent.ExecuteTask(ctx, task)
+		if err != nil {
+			return nil, fmt.Errorf("execution agent failed for task %s: %w", task.ID, err)
+		}
+
+		// Handle different execution results
+		switch taskResult.Status {
+		case "completed":
+			// Validate the completion using complete task definition and execution result
+			validation, err := a.validationAgent.ValidateTask(ctx, task, taskResult)
+			if err != nil {
+				return nil, fmt.Errorf("failed to validate task completion: %w", err)
+			}
+
+			if validation.ValidationResult == "success" {
+				// Task is validated as complete
+				err := a.config.workingMemory.UpdateTaskStatus(task.ID, "completed", strings.Join(taskResult.Evidence, "; "))
+				if err != nil {
+					return nil, fmt.Errorf("failed to mark task as completed: %w", err)
+				}
+
+				a.config.workingMemory.AddEvent(memory.ExecutionEvent{
+					Type:    "task_completed",
+					TaskID:  task.ID,
+					Details: fmt.Sprintf("Task %s completed and validated", task.ID),
+				})
+				return taskResult, nil
+			} else {
+				// Validation failed, add context and retry
+				validationContext := fmt.Sprintf("Task validation failed: %s. Retry %d/%d. Additional context: %s",
+					validation.Reasoning, validationRetry+1, maxValidationRetries, strings.Join(validation.Insights, "; "))
+
+				// Mark task as in progress again for retry
+				if err := a.config.workingMemory.UpdateTaskStatus(task.ID, "in_progress", "Validation failed, retrying"); err != nil {
+					return nil, fmt.Errorf("failed to update task status for retry: %w", err)
+				}
+
+				// If we have specific replanning recommendations, trigger replanning for this task
+				if validation.Recommendations.NextAction == "replan" {
+					err := a.replanTask(ctx, task, validation.Reasoning, validation.Recommendations.SpecificActions)
+					if err != nil {
+						return nil, fmt.Errorf("failed to replan task %s: %w", task.ID, err)
+					}
+				}
+
+				// Add validation failure context to high-level conversation
+				if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, validationContext); err != nil {
+					fmt.Printf("Warning: failed to add validation context to conversation: %v\n", err)
+				}
+
+				continue // Retry the task
+			}
+
+		case "needs_replanning":
+			// ExecutionAgent requests replanning
+			err := a.replanTask(ctx, task, taskResult.ReplanReason, nil)
+			if err != nil {
+				return nil, fmt.Errorf("failed to replan task %s: %w", task.ID, err)
+			}
+
+			// Add replanning context to high-level conversation
+			replanContext := fmt.Sprintf("Task %s needs replanning: %s", task.ID, taskResult.ReplanReason)
+			if err := a.config.conversationBuffer.ChatHistory.AddAIMessage(ctx, replanContext); err != nil {
+				fmt.Printf("Warning: failed to add replan context to conversation: %v\n", err)
+			}
+
+			continue // Retry with replanned task
+
+		case "failed":
+			// ExecutionAgent failed the task
+			if err := a.config.workingMemory.UpdateTaskStatus(task.ID, "failed", taskResult.Reasoning); err != nil {
+				return nil, fmt.Errorf("failed to mark task as failed: %w", err)
+			}
+			return nil, fmt.Errorf("task %s failed: %s", task.ID, taskResult.Reasoning)
+
+		default:
+			return nil, fmt.Errorf("unknown task execution status: %s", taskResult.Status)
+		}
+	}
+
+	// If we reach here, validation failed too many times
+	if err := a.config.workingMemory.UpdateTaskStatus(task.ID, "failed", fmt.Sprintf("Validation failed %d times", maxValidationRetries)); err != nil {
+		return nil, fmt.Errorf("failed to mark task as failed: %w", err)
+	}
+
+	return nil, fmt.Errorf("task %s failed validation %d times", task.ID, maxValidationRetries)
+}
+
+// replanTask replans a single task based on validation feedback
+func (a *OrchestratorAgent) replanTask(ctx context.Context, task *types.Task, validationReasoning string, specificActions []string) error {
+	// Build replanning context with specific actions if available
+	replanContext := fmt.Sprintf("Replanning task %s due to validation failure: %s", task.ID, validationReasoning)
+	if len(specificActions) > 0 {
+		replanContext += "\n\nSpecific recommendations for replanning:"
+		for _, action := range specificActions {
+			replanContext += fmt.Sprintf("\n- %s", action)
+		}
+	}
+
+	if err := a.config.conversationBuffer.ChatHistory.AddUserMessage(ctx, replanContext); err != nil {
+		return fmt.Errorf("failed to add replan context to conversation: %w", err)
+	}
+
+	// Use planning agent to update just this task
+	updatedPlan, err := a.planningAgent.UpdatePlan(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to replan task: %w", err)
+	}
+
+	// Find the updated task in the new plan
+	updatedTask := updatedPlan.GetTaskByID(task.ID)
+	if updatedTask != nil {
+		// Update the task in the current plan
+		*task = *updatedTask
+
+		// Build detailed replanning event message
+		eventDetails := fmt.Sprintf("Task %s replanned due to validation failure", task.ID)
+		if len(specificActions) > 0 {
+			eventDetails += ". Specific actions incorporated:"
+			for _, action := range specificActions {
+				eventDetails += fmt.Sprintf(" • %s", action)
+			}
+		}
+
+		a.config.workingMemory.AddEvent(memory.ExecutionEvent{
+			Type:    "task_replanned",
+			TaskID:  task.ID,
+			Details: eventDetails,
+		})
+	}
+
+	return nil
+}
+
 // Private methods
-
-func (a *OrchestratorAgent) isGoalAchieved() bool {
-	taskSummary := a.config.workingMemory.GetTaskStatusSummary()
-
-	// Check if all tasks are completed - for now use simple completed vs pending count
-	totalTasks := len(taskSummary.CompletedTasks) + len(taskSummary.PendingTasks)
-
-	// Goal is achieved if we have tasks and all are completed
-	return totalTasks > 0 && len(taskSummary.CompletedTasks) == totalTasks
-}
-
-func (a *OrchestratorAgent) needsReplanning(lastValidation *types.ValidationResult, iteration int) bool {
-	// Always replan on first iteration if we don't have validation yet
-	if lastValidation == nil && iteration == 1 {
-		return false // Initial plan is already created
-	}
-
-	// Replan if validation explicitly recommends it
-	if lastValidation != nil {
-		return lastValidation.Recommendations.NextAction == "replan" ||
-			lastValidation.ValidationResult == "needs_replanning"
-	}
-
-	// Replan every few iterations as a safety mechanism
-	return iteration%5 == 0
-}
-
 func (a *OrchestratorAgent) buildResult(status, reason string) *types.ExecutionResult {
 	taskSummary := a.config.workingMemory.GetTaskStatusSummary()
 	history := a.config.workingMemory.GetRecentHistory(50)

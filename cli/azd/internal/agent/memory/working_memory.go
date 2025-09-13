@@ -27,7 +27,6 @@ type TaskStatusSummary struct {
 	ID            string           `json:"id"`
 	Status        types.TaskStatus `json:"status"`
 	Brief         string           `json:"brief"`
-	BlockedBy     string           `json:"blockedBy,omitempty"`
 	EvidenceBrief string           `json:"evidenceBrief,omitempty"`
 }
 
@@ -285,12 +284,7 @@ func (tsd TaskStatusDisplay) ToPromptFormat() string {
 			symbol = "🚫"
 		}
 
-		suffix := ""
-		if task.BlockedBy != "" {
-			suffix = fmt.Sprintf(" (blocked by %s)", task.BlockedBy)
-		}
-
-		sb.WriteString(fmt.Sprintf("%s %s: %s%s\n", symbol, task.ID, task.Brief, suffix))
+		sb.WriteString(fmt.Sprintf("%s %s: %s\n", symbol, task.ID, task.Brief))
 	}
 
 	return sb.String()
@@ -306,18 +300,6 @@ func (wm *WorkingMemory) updateTaskStatusSummaries() {
 	wm.taskStatus = make(map[string]TaskStatusSummary)
 
 	for _, task := range wm.executionPlan.Tasks {
-		blockedBy := ""
-		if task.Status == types.TaskBlocked {
-			// Find which dependency is blocking
-			for _, depID := range task.Dependencies {
-				depTask := wm.executionPlan.GetTaskByID(depID)
-				if depTask != nil && depTask.Status != types.TaskComplete {
-					blockedBy = depID
-					break
-				}
-			}
-		}
-
 		evidenceBrief := ""
 		if evidence := wm.evidence[task.ID]; len(evidence) > 0 {
 			evidenceBrief = evidence[len(evidence)-1].Description
@@ -327,7 +309,6 @@ func (wm *WorkingMemory) updateTaskStatusSummaries() {
 			ID:            task.ID,
 			Status:        task.Status,
 			Brief:         task.Description,
-			BlockedBy:     blockedBy,
 			EvidenceBrief: evidenceBrief,
 		}
 	}

@@ -5,6 +5,8 @@ package types
 
 import (
 	"time"
+
+	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
 // AgentResponse represents the structured response from an execution agent
@@ -32,15 +34,15 @@ type CompletedTask struct {
 
 // ActionRequest represents a tool action the agent wants to execute
 type ActionRequest struct {
-	Tool      string         `json:"tool"`
-	Input     map[string]any `json:"input"`
-	Reasoning string         `json:"reasoning"`
+	Tool      string `json:"tool"`
+	Input     any    `json:"input"`
+	Reasoning string `json:"reasoning"`
 }
 
 // ActionResult represents the result of executing an action
 type ActionResult struct {
 	Tool      string    `json:"tool"`
-	Input     string    `json:"input"`
+	Input     any       `json:"input"`
 	Output    string    `json:"output"`
 	Error     string    `json:"error,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
@@ -89,10 +91,11 @@ type ExecutionResult struct {
 
 // ReplanEvent represents a replanning decision and its context
 type ReplanEvent struct {
-	Trigger   string    `json:"trigger"` // what caused replanning
-	Context   string    `json:"context"` // detailed context
-	Changes   []string  `json:"changes"` // what changed in the plan
-	Timestamp time.Time `json:"timestamp"`
+	Trigger         string    `json:"trigger"`         // what caused replanning
+	Context         string    `json:"context"`         // detailed context
+	Changes         []string  `json:"changes"`         // what changed in the plan
+	SpecificActions []string  `json:"specificActions"` // specific recommendations that guided replanning
+	Timestamp       time.Time `json:"timestamp"`
 }
 
 // ExecutionSummary represents the final summary of goal execution
@@ -110,4 +113,15 @@ type ExecutionSummary struct {
 	EndTime           time.Time          `json:"endTime"`
 	Duration          string             `json:"duration"`
 	Summary           string             `json:"summary"`
+}
+
+// TaskExecutionResult represents the result of executing a single task
+type TaskExecutionResult struct {
+	TaskID             string                              `json:"taskId"`
+	Status             string                              `json:"status"` // "completed", "failed", "needs_replanning"
+	Evidence           []string                            `json:"evidence"`
+	ToolCalls          []ActionResult                      `json:"toolCalls"`
+	Reasoning          string                              `json:"reasoning"`
+	ConversationBuffer *langchainmemory.ConversationBuffer `json:"-"` // Not serialized, for validation agent
+	ReplanReason       string                              `json:"replanReason,omitempty"`
 }

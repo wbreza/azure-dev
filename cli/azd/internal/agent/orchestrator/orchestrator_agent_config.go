@@ -25,7 +25,7 @@ type AgentOption func(config *AgentConfig)
 
 func WithConfig(config *AgentConfig) AgentOption {
 	return func(c *AgentConfig) {
-		c = config
+		*c = *config
 	}
 }
 
@@ -79,6 +79,6 @@ func WithCleanup(cleanupFunc func() error) AgentOption {
 
 func WithCallbacksHandler(handler callbacks.Handler) AgentOption {
 	return func(config *AgentConfig) {
-		config.callbacksHandler = config.callbacksHandler
+		config.callbacksHandler = handler
 	}
 }

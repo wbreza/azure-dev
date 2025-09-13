@@ -37,7 +37,6 @@ type PlanningResponse struct {
 type PlanningTask struct {
 	ID                 string                  `json:"id"`
 	Description        string                  `json:"description"`
-	Dependencies       []string                `json:"dependencies,omitempty"`
 	Rules              []string                `json:"rules,omitempty"`
 	ToolCalls          []types.PlannedToolCall `json:"toolCalls,omitempty"`
 	ValidationCriteria string                  `json:"validationCriteria"`
@@ -207,7 +206,6 @@ func (a *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, 
 				ID:                 planTask.ID,
 				Description:        planTask.Description,
 				Status:             types.TaskPending,
-				Dependencies:       planTask.Dependencies,
 				Rules:              planTask.Rules,
 				ToolCalls:          planTask.ToolCalls,
 				ValidationCriteria: planTask.ValidationCriteria,

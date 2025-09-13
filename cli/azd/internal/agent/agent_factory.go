@@ -125,6 +125,7 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 	)
 
 	azdAgent := orchestrator.NewOrchestratorAgent(
+		orchestrator.WithTools(protectedTools...),
 		orchestrator.WithCallbacksHandler(chainedHandler),
 		orchestrator.WithModel(defaultModelContainer.Model),
 		orchestrator.WithMaxIterations(100),
@@ -132,9 +133,6 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		orchestrator.WithThoughtChannel(thoughtChan),
 		orchestrator.WithCleanup(cleanup),
 	)
-	if err != nil {
-		return nil, err
-	}
 
 	return azdAgent, nil
 }

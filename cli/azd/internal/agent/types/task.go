@@ -48,7 +48,6 @@ type Task struct {
 	ID                 string            `json:"id"`
 	Description        string            `json:"description"`
 	Status             TaskStatus        `json:"status"`
-	Dependencies       []string          `json:"dependencies,omitempty"`
 	Rules              []string          `json:"rules,omitempty"`
 	ToolCalls          []PlannedToolCall `json:"toolCalls,omitempty"`
 	ValidationCriteria string            `json:"validationCriteria"`
@@ -102,32 +101,6 @@ func (ep *ExecutionPlan) GetPendingTasks() []*Task {
 		}
 	}
 	return pending
-}
-
-// GetReadyTasks returns tasks that have no incomplete dependencies
-func (ep *ExecutionPlan) GetReadyTasks() []*Task {
-	var ready []*Task
-
-	for _, task := range ep.Tasks {
-		if task.Status != TaskPending {
-			continue
-		}
-
-		allDepsComplete := true
-		for _, depID := range task.Dependencies {
-			depTask := ep.GetTaskByID(depID)
-			if depTask == nil || depTask.Status != TaskComplete {
-				allDepsComplete = false
-				break
-			}
-		}
-
-		if allDepsComplete {
-			ready = append(ready, task)
-		}
-	}
-
-	return ready
 }
 
 // UpdateTaskStatus updates a task's status and timestamp
