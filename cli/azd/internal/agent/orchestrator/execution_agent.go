@@ -8,15 +8,12 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
-	"github.com/tmc/langchaingo/schema"
-	"github.com/tmc/langchaingo/tools"
 )
 
 //go:embed prompts/execution.txt
@@ -24,16 +21,22 @@ var executionPromptTemplate string
 
 // ExecutionAgent executes tasks using available tools in an enhanced ReAct loop
 type ExecutionAgent struct {
-	config        *AgentConfig
-	toolsMap      map[string]common.AnnotatedTool
-	promptBuilder *ConversationalPromptBuilder
+	config          *AgentConfig
+	toolsMap        map[string]common.AnnotatedTool
+	promptBuilder   *ConversationalPromptBuilder
+	validationAgent *ValidationAgent
 }
 
-// NewExecutionAgent creates a new execution agent with shared conversation buffer and working memory
+// NewExecutionAgent creates a new execution agent with its own conversation buffer and validation agent
 func NewExecutionAgent(opts ...AgentOption) *ExecutionAgent {
 	config := &AgentConfig{}
 	for _, option := range opts {
 		option(config)
+	}
+
+	// Create separate conversation buffer for execution if not provided
+	if config.conversationBuffer == nil {
+		config.conversationBuffer = langchainmemory.NewConversationBuffer()
 	}
 
 	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
@@ -49,249 +52,223 @@ func NewExecutionAgent(opts ...AgentOption) *ExecutionAgent {
 		toolsMap[tool.Name()] = tool
 	}
 
+	// Create validation agent for task validation
+	validationAgent := NewValidationAgent(WithConfig(config))
+
 	return &ExecutionAgent{
-		config:        config,
-		toolsMap:      toolsMap,
-		promptBuilder: promptBuilder,
+		config:          config,
+		toolsMap:        toolsMap,
+		promptBuilder:   promptBuilder,
+		validationAgent: validationAgent,
 	}
 }
 
-// ExecuteStep performs one step of the enhanced ReAct loop
-func (a *ExecutionAgent) ExecuteStep(ctx context.Context) (*types.AgentResponse, []types.ActionResult, error) {
-	// Get agent response
-	response, err := a.getAgentResponse(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get agent response: %w", err)
-	}
+// ExecutePlan executes an entire execution plan
+func (a *ExecutionAgent) ExecutePlan(ctx context.Context, plan *types.Plan) (*types.ExecutePlanResult, error) {
+	// Iterate through each task in the plan and execute it.
+	// Create a consolidated plan result with task results.
 
-	// Execute actions
-	actionResults, err := a.executeActions(ctx, response.Actions)
-	if err != nil {
-		return response, nil, fmt.Errorf("failed to execute actions: %w", err)
-	}
+	taskResults := make([]types.TaskExecutionResult, 0, len(plan.Tasks))
 
-	// Process completed tasks and update working memory
-	for _, completedTask := range response.CompleteTasks {
-		err := a.config.workingMemory.UpdateTaskStatus(completedTask.TaskID, "completed", completedTask.Evidence)
+	for _, task := range plan.Tasks {
+		// Execute each task in sequence
+		taskResult, err := a.ExecuteTask(ctx, task)
 		if err != nil {
-			// Log warning but don't fail the entire step
-			fmt.Printf("Warning: failed to update task status for %s: %v\n", completedTask.TaskID, err)
+			// If an actual error is returned, stop and propagate it up
+			return nil, fmt.Errorf("failed to execute task %s: %w", task.ID, err)
+		}
+
+		taskResults = append(taskResults, *taskResult)
+
+		// If task failed (not error, just task failure), continue with remaining tasks
+		// TODO: Later we'll need to go through a "re-plan" flow for failed tasks
+		if taskResult.Status == "failed" {
+			// Continue with remaining tasks, but note the failure
+			continue
 		}
 	}
 
-	return response, actionResults, nil
-}
-
-// ExecuteSingleAction executes a single action and returns the result
-func (a *ExecutionAgent) ExecuteSingleAction(ctx context.Context, action types.ActionRequest) (types.ActionResult, error) {
-	return a.executeAction(ctx, action)
+	return &types.ExecutePlanResult{
+		Goal:  plan.Goal,
+		Tasks: taskResults,
+	}, nil
 }
 
 // ExecuteTask executes a complete task with its own conversation context
 func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*types.TaskExecutionResult, error) {
-	// Create task-specific conversation buffer
-	taskConversation := langchainmemory.NewConversationBuffer()
+	// Update task status to in progress at the beginning
+	task.Status = types.TaskInProgress
+	task.UpdatedAt = time.Now()
 
-	// Add task context to conversation
-	taskContext := fmt.Sprintf("Executing task: %s\nDescription: %s\nValidation Criteria: %s",
-		task.ID, task.Description, task.ValidationCriteria)
-	if err := taskConversation.ChatHistory.AddUserMessage(ctx, taskContext); err != nil {
-		return nil, fmt.Errorf("failed to add task context to conversation: %w", err)
+	// Create a new conversation buffer for this task
+	conversationBuffer := langchainmemory.NewConversationBuffer()
+
+	// Execute tool calls for the task
+	toolCallResults, err := a.invokeTools(ctx, task)
+	if err != nil {
+		// Actual error occurred during tool execution
+		task.Status = types.TaskFailed
+		task.UpdatedAt = time.Now()
+		return nil, fmt.Errorf("failed to execute tools for task %s: %w", task.ID, err)
 	}
 
-	// Create task-specific execution agent with its own conversation
-	taskAgent := NewExecutionAgent(
-		WithConfig(&AgentConfig{
-			model:              a.config.model,
-			tools:              a.config.tools,
-			conversationBuffer: taskConversation,
-			workingMemory:      a.config.workingMemory,
-			callbacksHandler:   a.config.callbacksHandler,
-			thoughtChan:        a.config.thoughtChan,
-		}),
-	)
+	taskJsonBytes, err := json.MarshalIndent(task, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal task %s to JSON: %w", task.ID, err)
+	}
 
-	var allToolCalls []types.ActionResult
-	var evidence []string
-	maxExecutionIterations := 10
+	// Add the Tasks to evaluate against to the conversation buffer
+	conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
+		Content: fmt.Sprintf("Task to evaluate against: \n```json\n%s```\n", string(taskJsonBytes)),
+	})
 
-	// Execute planned tool calls first
-	for _, plannedCall := range task.ToolCalls {
-		// Add tool call intent to conversation
-		toolCallMsg := fmt.Sprintf("Executing planned tool: %s\nReasoning: %s\nInput: %v",
-			plannedCall.ToolName, plannedCall.Reasoning, plannedCall.Input)
-		if err := taskConversation.ChatHistory.AddUserMessage(ctx, toolCallMsg); err != nil {
+	// Add tool call interactions to the conversation buffer
+	for _, toolResult := range toolCallResults {
+		err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
+			Content: fmt.Sprintf(
+				"Called tool '%s' with input: %s",
+				toolResult.ToolCall.Tool,
+				toolResult.ToolCall.Input, // TODO: Truncate if too long
+			),
+		})
+		if err != nil {
 			return nil, fmt.Errorf("failed to add tool call message to conversation: %w", err)
 		}
 
-		// Execute the tool call
-		actionRequest := types.ActionRequest{
-			Tool:      plannedCall.ToolName,
-			Input:     plannedCall.Input,
-			Reasoning: plannedCall.Reasoning,
-		}
-
-		result, err := taskAgent.executeAction(ctx, actionRequest)
+		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.ToolChatMessage{
+			Content: toolResult.Output,
+		})
 		if err != nil {
-			// Add error result to conversation and continue
-			errorMsg := fmt.Sprintf("Tool %s failed: %s", plannedCall.ToolName, err.Error())
-			if err := taskConversation.ChatHistory.AddAIMessage(ctx, errorMsg); err != nil {
-				return nil, fmt.Errorf("failed to add tool error to conversation: %w", err)
-			}
-		} else {
-			// Add successful tool result to conversation
-			resultMsg := fmt.Sprintf("Tool %s completed successfully. Output: %s", plannedCall.ToolName, result.Output)
-			if err := taskConversation.ChatHistory.AddAIMessage(ctx, resultMsg); err != nil {
-				return nil, fmt.Errorf("failed to add tool result to conversation: %w", err)
-			}
-		}
-		allToolCalls = append(allToolCalls, result)
-	}
-
-	// ReAct loop for additional analysis and actions
-	for iteration := 0; iteration < maxExecutionIterations; iteration++ {
-		// Get agent response using task-specific conversation
-		response, actionResults, err := taskAgent.ExecuteStep(ctx)
-		if err != nil {
-			return &types.TaskExecutionResult{
-				TaskID:             task.ID,
-				Status:             "failed",
-				Evidence:           evidence,
-				ToolCalls:          allToolCalls,
-				Reasoning:          fmt.Sprintf("Execution failed after %d iterations: %v", iteration, err),
-				ConversationBuffer: taskConversation,
-				ReplanReason:       "",
-			}, nil
-		}
-
-		// Add action results to our collection
-		allToolCalls = append(allToolCalls, actionResults...)
-
-		// Process any additional tool calls suggested by the agent
-		if len(response.Actions) > 0 {
-			additionalResults, err := taskAgent.executeActions(ctx, response.Actions)
-			if err != nil {
-				return &types.TaskExecutionResult{
-					TaskID:             task.ID,
-					Status:             "failed",
-					Evidence:           evidence,
-					ToolCalls:          allToolCalls,
-					Reasoning:          fmt.Sprintf("Additional action execution failed: %v", err),
-					ConversationBuffer: taskConversation,
-					ReplanReason:       "",
-				}, nil
-			}
-			allToolCalls = append(allToolCalls, additionalResults...)
-
-			// Add tool results to conversation for next iteration
-			for _, result := range additionalResults {
-				var resultMsg string
-				if result.Error != "" {
-					resultMsg = fmt.Sprintf("Additional tool %s failed: %s", result.Tool, result.Error)
-				} else {
-					resultMsg = fmt.Sprintf("Additional tool %s completed successfully. Output: %s", result.Tool, result.Output)
-				}
-				if err := taskConversation.ChatHistory.AddAIMessage(ctx, resultMsg); err != nil {
-					return nil, fmt.Errorf("failed to add additional tool result to conversation: %w", err)
-				}
-			}
-
-			// Continue the loop to re-analyze with new tool results
-			continue
-		}
-
-		// Check if agent marked this task as complete
-		taskCompleted := false
-		for _, completedTask := range response.CompleteTasks {
-			if completedTask.TaskID == task.ID {
-				taskCompleted = true
-				evidence = append(evidence, completedTask.Evidence)
-				break
-			}
-		}
-
-		if taskCompleted {
-			// Task is marked complete
-			return &types.TaskExecutionResult{
-				TaskID:             task.ID,
-				Status:             "completed",
-				Evidence:           evidence,
-				ToolCalls:          allToolCalls,
-				Reasoning:          response.Thought,
-				ConversationBuffer: taskConversation,
-				ReplanReason:       "",
-			}, nil
-		}
-
-		// Agent doesn't think task is complete and suggests no additional actions
-		// Check if we should request replanning
-		if response.Thought != "" && (strings.Contains(strings.ToLower(response.Thought), "replan") ||
-			strings.Contains(strings.ToLower(response.Thought), "stuck") ||
-			strings.Contains(strings.ToLower(response.Thought), "unable")) {
-			return &types.TaskExecutionResult{
-				TaskID:             task.ID,
-				Status:             "needs_replanning",
-				Evidence:           evidence,
-				ToolCalls:          allToolCalls,
-				Reasoning:          response.Thought,
-				ConversationBuffer: taskConversation,
-				ReplanReason:       response.Thought,
-			}, nil
-		}
-
-		// Add agent's reasoning to conversation for next iteration
-		reasoningContext := fmt.Sprintf("Agent analysis (iteration %d): %s. Observation: %s",
-			iteration+1, response.Thought, response.Observation)
-		if err := taskConversation.ChatHistory.AddAIMessage(ctx, reasoningContext); err != nil {
-			return nil, fmt.Errorf("failed to add agent reasoning to conversation: %w", err)
+			return nil, fmt.Errorf("failed to add tool result message to conversation: %w", err)
 		}
 	}
 
-	// If we reach here, we've exceeded max iterations
-	return &types.TaskExecutionResult{
-		TaskID:             task.ID,
-		Status:             "needs_replanning",
-		Evidence:           evidence,
-		ToolCalls:          allToolCalls,
-		Reasoning:          fmt.Sprintf("Exceeded maximum execution iterations (%d)", maxExecutionIterations),
-		ConversationBuffer: taskConversation,
-		ReplanReason:       "Task execution exceeded maximum iterations without completion",
-	}, nil
+	// Create a new prompt builder with the task-specific conversation buffer
+	taskPromptBuilder := NewConversationalPromptBuilder(
+		WithSystemPrompt(executionPromptTemplate),
+		WithPromptTools(a.config.tools),
+		WithWorkingMemory(StandardWorkingMemoryFormatter),
+		WithConversationBuffer(conversationBuffer),
+	)
+
+	// Evaluate the task execution to get evidence and insights
+	evalResult, err := a.evaluateTaskExecution(ctx, taskPromptBuilder)
+	if err != nil {
+		task.Status = types.TaskFailed
+		task.UpdatedAt = time.Now()
+		return nil, fmt.Errorf("failed to evaluate task execution for task %s: %w", task.ID, err)
+	}
+
+	task.Status = types.TaskAwaitingValidation
+	task.UpdatedAt = time.Now()
+
+	// Consolidate task result
+	taskResult := &types.TaskExecutionResult{
+		Task:       task,
+		Status:     task.Status,
+		ToolCalls:  toolCallResults,
+		Evaluation: evalResult,
+	}
+
+	// Send to validation agent for validation
+	validationResult, err := a.validationAgent.ValidateTask(ctx, taskResult)
+	if err != nil {
+		task.Status = types.TaskValidationFailed
+		task.UpdatedAt = time.Now()
+		return nil, fmt.Errorf("failed to validate task %s: %w", task.ID, err)
+	}
+
+	// Update task status based on validation result
+	if validationResult.Evaluation != nil {
+		task.Status = validationResult.Evaluation.Status
+		task.UpdatedAt = time.Now()
+
+		// Update the task result with final status
+		taskResult.Status = task.Status
+	}
+
+	return taskResult, nil
 }
 
-// Private methods
+func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) ([]*types.ToolCallResult, error) {
+	// Iterate through each tool call
+	// return a slice of tool call results
 
-func (a *ExecutionAgent) getAgentResponse(ctx context.Context) (*types.AgentResponse, error) {
+	results := make([]*types.ToolCallResult, 0, len(task.ToolCalls))
+
+	for _, toolCall := range task.ToolCalls {
+		// Find the tool in our tools map
+		tool, exists := a.toolsMap[toolCall.Tool]
+		if !exists {
+			return nil, fmt.Errorf("tool '%s' not found in available tools", toolCall.Tool)
+		}
+
+		startTime := time.Now()
+
+		// Marshal the input to JSON string for the tool
+		var inputJSON string
+		if toolCall.Input != "" {
+			// Parse the input as JSON to validate it, then re-marshal
+			var parsedInput interface{}
+			if err := json.Unmarshal([]byte(toolCall.Input), &parsedInput); err != nil {
+				return nil, fmt.Errorf("invalid JSON input for tool '%s': %w", toolCall.Tool, err)
+			}
+
+			inputBytes, err := json.Marshal(parsedInput)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal input for tool '%s': %w", toolCall.Tool, err)
+			}
+			inputJSON = string(inputBytes)
+		} else {
+			inputJSON = "{}" // Default empty JSON object
+		}
+
+		// Execute the tool
+		output, err := tool.Call(ctx, inputJSON)
+		endTime := time.Now()
+
+		// Create the tool call result
+		result := &types.ToolCallResult{
+			ToolCall:  toolCall,
+			Output:    output,
+			StartTime: startTime,
+			EndTime:   endTime,
+			Duration:  endTime.Sub(startTime),
+		}
+
+		if err != nil {
+			result.Error = err.Error()
+		}
+
+		results = append(results, result)
+
+		// If error occurred and we want to fail immediately, return the error
+		if err != nil {
+			return nil, fmt.Errorf("tool '%s' execution failed: %w", toolCall.Tool, err)
+		}
+	}
+
+	return results, nil
+}
+
+func (a *ExecutionAgent) evaluateTaskExecution(ctx context.Context, prompt *ConversationalPromptBuilder) (*types.TaskExecutionEvalResult, error) {
+	// Construct execution prompt with builder
+	// Include messages of each tool call and its results
+	// Generate evidence and insights for the task
+	// Invoke prompt message to LLM for evaluation
+
 	// Build messages using the conversational prompt builder
-	messages, err := a.promptBuilder.BuildMessages(ctx, a.config.workingMemory)
+	messages, err := prompt.BuildMessages(ctx, a.config.workingMemory)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build execution messages: %w", err)
+		return nil, fmt.Errorf("failed to build evaluation messages: %w", err)
 	}
-
-	// Add current task status as human message for context
-	taskStatus := a.config.workingMemory.GetTaskStatusSummary()
-	recentHistory := a.config.workingMemory.GetRecentHistory(5)
-
-	var contextBuilder strings.Builder
-	contextBuilder.WriteString("Current Execution Status:\n")
-	contextBuilder.WriteString(taskStatus.ToPromptFormat())
-	contextBuilder.WriteString("\n\nRecent Activity:\n")
-	for _, event := range recentHistory {
-		contextBuilder.WriteString(fmt.Sprintf("- %s: %s\n", event.Type, event.Details))
-	}
-	contextBuilder.WriteString("\nPlease analyze the current situation and determine the next action to take.")
-
-	messages = append(messages, llms.MessageContent{
-		Role:  llms.ChatMessageTypeHuman,
-		Parts: []llms.ContentPart{llms.TextPart(contextBuilder.String())},
-	})
 
 	// Get response from LLM
 	a.config.callbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
 	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
 		a.config.callbacksHandler.HandleLLMError(ctx, err)
-		return nil, fmt.Errorf("failed to generate execution response: %w", err)
+		return nil, fmt.Errorf("failed to generate evaluation response: %w", err)
 	}
 	a.config.callbacksHandler.HandleLLMGenerateContentEnd(ctx, response)
 
@@ -305,86 +282,15 @@ func (a *ExecutionAgent) getAgentResponse(ctx context.Context) (*types.AgentResp
 		return nil, fmt.Errorf("empty response from LLM")
 	}
 
-	// Parse JSON response (handle markdown-formatted JSON)
-	var agentResponse types.AgentResponse
-	if err := unmarshalJSONResponse(responseText, &agentResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse agent response as JSON: %w\nResponse: %s", err, responseText)
+	// Parse JSON response using the execution prompt format
+	var agentEvalResponse *types.TaskExecutionEvalResult
+	if err := unmarshalJSONResponse(responseText, &agentEvalResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse evaluation response as JSON: %w\nResponse: %s", err, responseText)
 	}
 
-	return &agentResponse, nil
-}
-
-func (a *ExecutionAgent) executeActions(ctx context.Context, actions []types.ActionRequest) ([]types.ActionResult, error) {
-	results := make([]types.ActionResult, 0, len(actions))
-
-	for _, action := range actions {
-		result, err := a.executeAction(ctx, action)
-		if err != nil {
-			// Don't fail entirely if one action fails - record the error and continue
-			result = types.ActionResult{
-				Tool:      action.Tool,
-				Input:     action.Input,
-				Error:     err.Error(),
-				Timestamp: time.Now(),
-				Duration:  "0s",
-			}
-		}
-		results = append(results, result)
-	}
-
-	return results, nil
-}
-
-func (a *ExecutionAgent) executeAction(ctx context.Context, action types.ActionRequest) (types.ActionResult, error) {
-	startTime := time.Now()
-
-	// Convert input to string (tools expect string input)
-	inputJSON, err := json.Marshal(action.Input)
-	if err != nil {
-		return types.ActionResult{}, fmt.Errorf("failed to marshal tool input: %w", err)
-	}
-
-	a.config.callbacksHandler.HandleAgentAction(ctx, schema.AgentAction{
-		ToolID:    action.Tool,
-		Tool:      action.Tool,
-		ToolInput: string(inputJSON),
-		Log:       action.Reasoning,
-	})
-
-	// Find the tool
-	tool, exists := a.toolsMap[action.Tool]
-	if !exists {
-		return types.ActionResult{}, fmt.Errorf("tool %s not found", action.Tool)
-	}
-
-	// Execute the tool
-	a.config.callbacksHandler.HandleToolStart(ctx, string(inputJSON))
-
-	output, err := tool.Call(ctx, string(inputJSON))
-	if err != nil {
-		a.config.callbacksHandler.HandleToolError(ctx, err)
-
-		return types.ActionResult{
-			Tool:      action.Tool,
-			Input:     action.Input,
-			Error:     err.Error(),
-			Timestamp: startTime,
-			Duration:  time.Since(startTime).String(),
-		}, err
-	}
-
-	a.config.callbacksHandler.HandleToolEnd(ctx, output)
-
-	return types.ActionResult{
-		Tool:      action.Tool,
-		Input:     action.Input,
-		Output:    output,
-		Timestamp: startTime,
-		Duration:  time.Since(startTime).String(),
+	return &types.TaskExecutionEvalResult{
+		Summary:  agentEvalResponse.Summary,
+		Insights: agentEvalResponse.Insights,
+		Evidence: agentEvalResponse.Evidence,
 	}, nil
-}
-
-// GetTools returns the tools available to this agent (for langchain compatibility)
-func (a *ExecutionAgent) GetTools() []tools.Tool {
-	return common.ToLangChainTools(a.config.tools)
 }

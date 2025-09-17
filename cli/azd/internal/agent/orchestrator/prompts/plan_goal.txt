@@ -21,13 +21,11 @@ Given a user prompt and a list of available tools, you must:
 - Each task should be specific and actionable
 - Order tasks logically based on dependencies
 - Consider prerequisites and setup requirements
-- Include validation steps for critical tasks
 
 ### Tool Selection
 - Match available tools to required capabilities
 - Prefer built-in tools when available
 - Consider tool limitations and capabilities
-- Plan for error handling and validation
 
 ### Tool Input Types
 Tool inputs can be any valid JSON type:
@@ -38,14 +36,23 @@ Tool inputs can be any valid JSON type:
 - **Booleans**: true or false
 - **Null**: null
 
-Choose the input format that best matches the tool's expected parameters.
-
 ### Task Rules
-For each task, consider including rules such as:
+Execution constraints and requirements:
 - Prerequisites that must be met
-- Validation criteria for completion
 - Error handling strategies
-- Rollback procedures if needed
+- Retry logic and rollback procedures
+
+### Tool Call Guidelines
+**Tool calls should accomplish work, not perform validation:**
+- ✅ **Good**: Create files, deploy resources, configure settings, build applications
+- ❌ **Avoid**: List files to check if they exist, read files to verify content, query status for validation
+- ✅ **Focus**: Action-oriented calls that make progress toward the goal
+
+### Validation Criteria
+Success assertions based on tool outputs:
+- What constitutes successful task completion
+- Evidence that should be present in tool results
+- Observable outcomes that confirm progress
 
 ---
 
@@ -86,7 +93,10 @@ Use responseType: "tasks" with structured planning:
           "reasoning": "Why this tool is needed"
         }
       ],
-      "validationCriteria": "How to determine if this task is complete"
+      "validationCriteria": [
+        "Specific assertion about successful completion",
+        "Another assertion based on expected tool outputs"
+      ]
     }
   ]
 }
@@ -115,7 +125,6 @@ Use responseType: "tasks" with structured planning:
 - **Be Efficient**: Minimize unnecessary steps while ensuring completeness
 - **Be Realistic**: Only plan tasks that can be accomplished with available tools
 - **Consider Context**: Factor in best practices and platform conventions
-- **Plan for Validation**: Include clear success criteria for each task
 - **Handle Dependencies**: Ensure tasks are ordered correctly
 - **Enable Replanning**: Structure tasks so they can be modified if needed
 
@@ -123,11 +132,10 @@ Use responseType: "tasks" with structured planning:
 
 ### Simple Request: "Deploy my app to Azure"
 1. Analyze project structure
-2. Validate Azure configuration
+2. Configure Azure settings
 3. Build application
 4. Provision infrastructure
 5. Deploy application
-6. Validate deployment
 
 ### Complex Request: "Set up CI/CD pipeline for my microservices"
 1. Analyze repository structure
@@ -135,7 +143,49 @@ Use responseType: "tasks" with structured planning:
 3. Create pipeline configuration for each service
 4. Set up Azure resources
 5. Configure deployment stages
-6. Test pipeline execution
-7. Document the setup
+6. Document the setup
+
+### Detailed Example: "Create a folder called infra with main.bicep and main.parameters.json files"
+
+```json
+{
+  "responseType": "tasks",
+  "goal": "Create infrastructure folder with Bicep files",
+  "tasks": [
+    {
+      "id": "task_001",
+      "description": "Create infra folder structure with required Bicep files",
+      "rules": [
+        "Files must use valid Bicep and JSON syntax",
+        "Use standard Azure naming conventions",
+        "Include error handling for file creation failures"
+      ],
+      "toolCalls": [
+        {
+          "toolName": "create_directory",
+          "input": {"path": "./infra"},
+          "reasoning": "Create the infra directory structure"
+        },
+        {
+          "toolName": "create_file",
+          "input": {"path": "./infra/main.bicep", "content": "// Bicep template content"},
+          "reasoning": "Create the main Bicep infrastructure template"
+        },
+        {
+          "toolName": "create_file", 
+          "input": {"path": "./infra/main.parameters.json", "content": "{}"},
+          "reasoning": "Create the parameters file for the Bicep template"
+        }
+      ],
+      "validationCriteria": [
+        "Infra folder exists and is accessible",
+        "main.bicep file created successfully with valid content",
+        "main.parameters.json file created successfully with valid JSON",
+        "Tool outputs confirm all file operations completed without errors"
+      ]
+    }
+  ]
+}
+```
 
 Remember: Your output will be parsed as JSON and fed into an execution engine. Ensure the JSON is valid and complete.

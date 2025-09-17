@@ -11,7 +11,6 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
-	"github.com/google/uuid"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -22,24 +21,6 @@ var planningPromptTemplate string
 type PlanningAgent struct {
 	config        *AgentConfig
 	promptBuilder *ConversationalPromptBuilder
-}
-
-// PlanningResponse represents the JSON response expected from the planning LLM
-type PlanningResponse struct {
-	ResponseType    string         `json:"responseType"` // "tasks" or "message"
-	Goal            string         `json:"goal"`
-	Message         string         `json:"message,omitempty"`         // For responseType: "message"
-	Tasks           []PlanningTask `json:"tasks,omitempty"`           // For responseType: "tasks"
-	ValidationSteps []string       `json:"validationSteps,omitempty"` // For responseType: "tasks"
-}
-
-// PlanningTask represents a task in the planning response
-type PlanningTask struct {
-	ID                 string                  `json:"id"`
-	Description        string                  `json:"description"`
-	Rules              []string                `json:"rules,omitempty"`
-	ToolCalls          []types.PlannedToolCall `json:"toolCalls,omitempty"`
-	ValidationCriteria string                  `json:"validationCriteria"`
 }
 
 // NewPlanningAgent creates a new planning agent
@@ -191,11 +172,9 @@ func (a *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, 
 
 	case "tasks":
 		// Task-based response - convert to ExecutionPlan
-		executionPlan := &types.ExecutionPlan{
-			ID:        uuid.New().String(),
+		executionPlan := &types.Plan{
 			Goal:      planningResponse.Goal,
 			Tasks:     make([]*types.Task, 0, len(planningResponse.Tasks)),
-			Status:    "active",
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 		}
