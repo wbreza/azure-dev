@@ -23,7 +23,7 @@ var executionPromptTemplate string
 type ExecutionAgent struct {
 	config          *AgentConfig
 	toolsMap        map[string]common.AnnotatedTool
-	promptBuilder   *ConversationalPromptBuilder
+	promptBuilder   *PromptBuilder
 	validationAgent *ValidationAgent
 }
 
@@ -34,17 +34,13 @@ func NewExecutionAgent(opts ...AgentOption) *ExecutionAgent {
 		option(config)
 	}
 
-	// Create separate conversation buffer for execution if not provided
-	if config.conversationBuffer == nil {
-		config.conversationBuffer = langchainmemory.NewConversationBuffer()
-	}
+	conversationBuffer := langchainmemory.NewConversationBuffer()
 
 	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
-	promptBuilder := NewConversationalPromptBuilder(
+	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(executionPromptTemplate),
 		WithPromptTools(config.tools),
-		WithWorkingMemory(StandardWorkingMemoryFormatter),
-		WithConversationBuffer(config.conversationBuffer),
+		WithConversationBuffer(conversationBuffer),
 	)
 
 	toolsMap := make(map[string]common.AnnotatedTool)
@@ -68,34 +64,33 @@ func (a *ExecutionAgent) ExecutePlan(ctx context.Context, plan *types.Plan) (*ty
 	// Iterate through each task in the plan and execute it.
 	// Create a consolidated plan result with task results.
 
-	taskResults := make([]types.TaskExecutionResult, 0, len(plan.Tasks))
-
 	for _, task := range plan.Tasks {
 		// Execute each task in sequence
-		taskResult, err := a.ExecuteTask(ctx, task)
-		if err != nil {
+		if err := a.ExecuteTask(ctx, task); err != nil {
 			// If an actual error is returned, stop and propagate it up
 			return nil, fmt.Errorf("failed to execute task %s: %w", task.ID, err)
 		}
-
-		taskResults = append(taskResults, *taskResult)
-
-		// If task failed (not error, just task failure), continue with remaining tasks
-		// TODO: Later we'll need to go through a "re-plan" flow for failed tasks
-		if taskResult.Status == "failed" {
-			// Continue with remaining tasks, but note the failure
-			continue
-		}
 	}
 
-	return &types.ExecutePlanResult{
-		Goal:  plan.Goal,
-		Tasks: taskResults,
-	}, nil
+	planResult := &types.ExecutePlanResult{
+		Plan: plan,
+	}
+
+	if plan.IsComplete() {
+		summaryAgent := NewSummaryAgent(WithConfig(a.config))
+		summaryResult, err := summaryAgent.Summarize(ctx, planResult)
+		if err != nil {
+			return nil, err
+		}
+
+		planResult.Summary = summaryResult.Summary
+	}
+
+	return planResult, nil
 }
 
 // ExecuteTask executes a complete task with its own conversation context
-func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*types.TaskExecutionResult, error) {
+func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) error {
 	// Update task status to in progress at the beginning
 	task.Status = types.TaskInProgress
 	task.UpdatedAt = time.Now()
@@ -109,12 +104,12 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 		// Actual error occurred during tool execution
 		task.Status = types.TaskFailed
 		task.UpdatedAt = time.Now()
-		return nil, fmt.Errorf("failed to execute tools for task %s: %w", task.ID, err)
+		return fmt.Errorf("failed to execute tools for task %s: %w", task.ID, err)
 	}
 
 	taskJsonBytes, err := json.MarshalIndent(task, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal task %s to JSON: %w", task.ID, err)
+		return fmt.Errorf("failed to marshal task %s to JSON: %w", task.ID, err)
 	}
 
 	// Add the Tasks to evaluate against to the conversation buffer
@@ -132,22 +127,21 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 			),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to add tool call message to conversation: %w", err)
+			return fmt.Errorf("failed to add tool call message to conversation: %w", err)
 		}
 
 		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.ToolChatMessage{
 			Content: toolResult.Output,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to add tool result message to conversation: %w", err)
+			return fmt.Errorf("failed to add tool result message to conversation: %w", err)
 		}
 	}
 
 	// Create a new prompt builder with the task-specific conversation buffer
-	taskPromptBuilder := NewConversationalPromptBuilder(
+	taskPromptBuilder := NewPromptBuilder(
 		WithSystemPrompt(executionPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithWorkingMemory(StandardWorkingMemoryFormatter),
 		WithConversationBuffer(conversationBuffer),
 	)
 
@@ -156,38 +150,31 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 	if err != nil {
 		task.Status = types.TaskFailed
 		task.UpdatedAt = time.Now()
-		return nil, fmt.Errorf("failed to evaluate task execution for task %s: %w", task.ID, err)
+		return fmt.Errorf("failed to evaluate task execution for task %s: %w", task.ID, err)
 	}
 
 	task.Status = types.TaskAwaitingValidation
 	task.UpdatedAt = time.Now()
-
-	// Consolidate task result
-	taskResult := &types.TaskExecutionResult{
-		Task:       task,
-		Status:     task.Status,
+	task.Progress = &types.TaskProgress{
 		ToolCalls:  toolCallResults,
 		Evaluation: evalResult,
 	}
 
 	// Send to validation agent for validation
-	validationResult, err := a.validationAgent.ValidateTask(ctx, taskResult)
+	validationResult, err := a.validationAgent.ValidateTask(ctx, task)
 	if err != nil {
 		task.Status = types.TaskValidationFailed
 		task.UpdatedAt = time.Now()
-		return nil, fmt.Errorf("failed to validate task %s: %w", task.ID, err)
+		return fmt.Errorf("failed to validate task %s: %w", task.ID, err)
 	}
 
 	// Update task status based on validation result
 	if validationResult.Evaluation != nil {
 		task.Status = validationResult.Evaluation.Status
 		task.UpdatedAt = time.Now()
-
-		// Update the task result with final status
-		taskResult.Status = task.Status
 	}
 
-	return taskResult, nil
+	return nil
 }
 
 func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) ([]*types.ToolCallResult, error) {
@@ -251,14 +238,14 @@ func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) ([]*
 	return results, nil
 }
 
-func (a *ExecutionAgent) evaluateTaskExecution(ctx context.Context, prompt *ConversationalPromptBuilder) (*types.TaskExecutionEvalResult, error) {
+func (a *ExecutionAgent) evaluateTaskExecution(ctx context.Context, prompt *PromptBuilder) (*types.TaskExecutionEvalResult, error) {
 	// Construct execution prompt with builder
 	// Include messages of each tool call and its results
 	// Generate evidence and insights for the task
 	// Invoke prompt message to LLM for evaluation
 
 	// Build messages using the conversational prompt builder
-	messages, err := prompt.BuildMessages(ctx, a.config.workingMemory)
+	messages, err := prompt.BuildMessages(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build evaluation messages: %w", err)
 	}

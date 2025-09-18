@@ -6,12 +6,13 @@ package orchestrator
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
+	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
 //go:embed prompts/planning.txt
@@ -19,8 +20,7 @@ var planningPromptTemplate string
 
 // PlanningAgent creates structured execution plans using LLM reasoning
 type PlanningAgent struct {
-	config        *AgentConfig
-	promptBuilder *ConversationalPromptBuilder
+	config *AgentConfig
 }
 
 // NewPlanningAgent creates a new planning agent
@@ -30,107 +30,79 @@ func NewPlanningAgent(opts ...AgentOption) *PlanningAgent {
 		option(config)
 	}
 
-	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
-	promptBuilder := NewConversationalPromptBuilder(
+	return &PlanningAgent{
+		config: config,
+	}
+}
+
+// Plan generates a new execution plan for the given goal
+func (a *PlanningAgent) Plan(ctx context.Context, goal string) (*types.PlanningResult, error) {
+	// Create a new conversation buffer for planning
+	conversationBuffer := langchainmemory.NewConversationBuffer()
+
+	if a.config.plan != nil {
+		existingPlanJson, err := json.MarshalIndent(a.config.plan, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+
+		existingPlan := fmt.Sprintf("Existing Plan:\n```json\n%s\n```", string(existingPlanJson))
+		conversationBuffer.ChatHistory.AddAIMessage(ctx, existingPlan)
+	}
+
+	// Add the user goal as context
+	err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.HumanChatMessage{
+		Content: goal,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to add goal to conversation: %w", err)
+	}
+
+	// Create prompt builder for planning
+	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(planningPromptTemplate),
-		WithPromptTools(config.tools),
-		WithWorkingMemory(StandardWorkingMemoryFormatter),
+		WithPromptTools(a.config.tools),
+		WithConversationBuffer(conversationBuffer),
 	)
 
-	return &PlanningAgent{
-		config:        config,
-		promptBuilder: promptBuilder,
-	}
-}
-
-// CreatePlan generates a new execution plan for the given goal
-func (a *PlanningAgent) CreatePlan(ctx context.Context, goal string) (*types.PlanningResult, error) {
-	// Build context from working memory if available
-	context := ""
-	if a.config.workingMemory != nil {
-		taskSummary := a.config.workingMemory.GetTaskStatusSummary()
-		context = taskSummary.ToPromptFormat()
-	}
-
-	return a.createPlanWithContext(ctx, goal, context)
-}
-
-// UpdatePlan modifies an existing execution plan based on working memory state
-func (a *PlanningAgent) UpdatePlan(ctx context.Context) (*types.ExecutionPlan, error) {
-	goal := a.config.workingMemory.GetGoal()
-
-	// Build context for replanning
-	currentPlan := a.config.workingMemory.GetExecutionPlan()
-
-	contextBuilder := fmt.Sprintf(`
-CURRENT PLAN STATUS:
-Goal: %s
-Total Tasks: %d
-
-EXISTING TASKS:
-`, goal, len(currentPlan.Tasks))
-
-	for _, task := range currentPlan.Tasks {
-		status := "pending"
-		switch task.Status {
-		case types.TaskComplete:
-			status = "✓ COMPLETE"
-		case types.TaskFailed:
-			status = "✗ FAILED"
-		case types.TaskInProgress:
-			status = "→ IN PROGRESS"
-		case types.TaskBlocked:
-			status = "🚫 BLOCKED"
-		}
-		contextBuilder += fmt.Sprintf("- %s: %s (%s)\n", task.ID, task.Description, status)
-	}
-
-	recentHistory := a.config.workingMemory.GetRecentHistory(5)
-	contextBuilder += "\nRECENT EXECUTION HISTORY:\n"
-	for _, event := range recentHistory {
-		contextBuilder += fmt.Sprintf("- %s: %s\n", event.Type, event.Details)
-	}
-
-	contextBuilder += "\nPlease update the plan as needed. Keep completed tasks unchanged unless they need to be redone."
-
-	planningResult, err := a.createPlanWithContext(ctx, goal, contextBuilder)
+	// Evaluate the plan
+	evalResult, err := a.evaluatePlan(ctx, promptBuilder)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to evaluate plan: %w", err)
 	}
 
-	// For replanning, we always expect tasks (not messages)
-	if planningResult.ResponseType != "tasks" || planningResult.Plan == nil {
-		return nil, fmt.Errorf("expected task-based planning result for replanning, got %s", planningResult.ResponseType)
+	// Convert PlanEvalResult to types.Plan
+	plan := &types.Plan{
+		Goal:      evalResult.Goal,
+		Tasks:     evalResult.Tasks, // Direct assignment since they're already *Task
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 
-	return planningResult.Plan, nil
+	// Set status and timestamps for all tasks
+	for _, task := range plan.Tasks {
+		task.Status = types.TaskPending
+		task.UpdatedAt = time.Now()
+	}
+
+	summaryAgent := NewSummaryAgent(WithConfig(a.config))
+	summaryResult, err := summaryAgent.Summarize(ctx, plan)
+	if err != nil {
+		return nil, fmt.Errorf("failed to summarize plan: %w", err)
+	}
+
+	return &types.PlanningResult{
+		Summary: summaryResult.Summary,
+		Plan:    plan,
+	}, nil
 }
 
-// createPlanWithContext generates a new execution plan for the given goal and context
-func (a *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, context string) (*types.PlanningResult, error) {
-	// Create working memory for this planning session
-	workingMemory := memory.NewWorkingMemory()
-	workingMemory.SetGoal(goal)
-
-	// Add context as an event if provided
-	if context != "" {
-		workingMemory.AddEvent(memory.ExecutionEvent{
-			Type:    "planning_context",
-			Details: context,
-		})
-	}
-
+func (a *PlanningAgent) evaluatePlan(ctx context.Context, promptBuilder *PromptBuilder) (*types.PlanEvalResult, error) {
 	// Build messages using the conversational prompt builder
-	messages, err := a.promptBuilder.BuildMessages(ctx, workingMemory)
+	messages, err := promptBuilder.BuildMessages(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build planning messages: %w", err)
 	}
-
-	// Add the user goal as the human message
-	messages = append(messages, llms.MessageContent{
-		Role:  llms.ChatMessageTypeHuman,
-		Parts: []llms.ContentPart{llms.TextPart(fmt.Sprintf("User Request: %s", goal))},
-	})
 
 	// Get response from LLM
 	a.config.callbacksHandler.HandleLLMGenerateContentStart(ctx, messages)
@@ -151,53 +123,18 @@ func (a *PlanningAgent) createPlanWithContext(ctx context.Context, goal string, 
 		return nil, fmt.Errorf("empty response from LLM")
 	}
 
-	// Parse JSON response (handle markdown-formatted JSON)
-	var planningResponse PlanningResponse
-	if err := unmarshalJSONResponse(responseText, &planningResponse); err != nil {
+	// Parse JSON response using the planning prompt format
+	var planEvalResponse *types.PlanEvalResult
+	if err := unmarshalJSONResponse(responseText, &planEvalResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse planning response as JSON: %w\nResponse: %s", err, responseText)
 	}
 
-	// Create PlanningResult based on response type
-	result := &types.PlanningResult{
-		ResponseType: planningResponse.ResponseType,
-		Goal:         planningResponse.Goal,
-	}
-
-	// Handle different response types
-	switch planningResponse.ResponseType {
-	case "message":
-		// Simple message response - no task planning needed
-		result.Message = planningResponse.Message
-		return result, nil
-
-	case "tasks":
-		// Task-based response - convert to ExecutionPlan
-		executionPlan := &types.Plan{
-			Goal:      planningResponse.Goal,
-			Tasks:     make([]*types.Task, 0, len(planningResponse.Tasks)),
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
-		}
-
-		// Convert planning tasks to execution tasks
-		for _, planTask := range planningResponse.Tasks {
-			task := &types.Task{
-				ID:                 planTask.ID,
-				Description:        planTask.Description,
-				Status:             types.TaskPending,
-				Rules:              planTask.Rules,
-				ToolCalls:          planTask.ToolCalls,
-				ValidationCriteria: planTask.ValidationCriteria,
-				CreatedAt:          time.Now(),
-				UpdatedAt:          time.Now(),
-			}
-			executionPlan.Tasks = append(executionPlan.Tasks, task)
-		}
-
-		result.Plan = executionPlan
-		return result, nil
-
-	default:
-		return nil, fmt.Errorf("unknown response type: %s", planningResponse.ResponseType)
-	}
+	return &types.PlanEvalResult{
+		Summary:  planEvalResponse.Summary,
+		Goal:     planEvalResponse.Goal,
+		Tasks:    planEvalResponse.Tasks,
+		Insights: planEvalResponse.Insights,
+	}, nil
 }
+
+// TODO: UpdatePlan and other methods to be redesigned following the new patterns

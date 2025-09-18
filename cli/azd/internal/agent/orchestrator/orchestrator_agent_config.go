@@ -2,23 +2,22 @@ package orchestrator
 
 import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/logging"
-	"github.com/azure/azure-dev/cli/azd/internal/agent/memory"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
+	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/callbacks"
 	"github.com/tmc/langchaingo/llms"
-	langchainmemory "github.com/tmc/langchaingo/memory"
 )
 
 type AgentConfig struct {
-	tools              []common.AnnotatedTool
-	conversationBuffer *langchainmemory.ConversationBuffer
-	workingMemory      *memory.WorkingMemory
-	model              llms.Model
-	maxIterations      int
-	maxFailedCycles    int
-	thoughtChan        chan logging.Thought
-	cleanupFunc        func() error
-	callbacksHandler   callbacks.Handler
+	plan             *types.Plan
+	messages         []llms.ChatMessage
+	tools            []common.AnnotatedTool
+	model            llms.Model
+	maxIterations    int
+	maxFailedCycles  int
+	thoughtChan      chan logging.Thought
+	cleanupFunc      func() error
+	callbacksHandler callbacks.Handler
 }
 
 type AgentOption func(config *AgentConfig)
@@ -29,21 +28,21 @@ func WithConfig(config *AgentConfig) AgentOption {
 	}
 }
 
+func WithMessages(messages []llms.ChatMessage) AgentOption {
+	return func(config *AgentConfig) {
+		config.messages = messages
+	}
+}
+
+func WithPlan(plan *types.Plan) AgentOption {
+	return func(config *AgentConfig) {
+		config.plan = plan
+	}
+}
+
 func WithTools(tools ...common.AnnotatedTool) AgentOption {
 	return func(config *AgentConfig) {
 		config.tools = tools
-	}
-}
-
-func WithHistory(buffer *langchainmemory.ConversationBuffer) AgentOption {
-	return func(config *AgentConfig) {
-		config.conversationBuffer = buffer
-	}
-}
-
-func WithMemory(workingMemory *memory.WorkingMemory) AgentOption {
-	return func(config *AgentConfig) {
-		config.workingMemory = workingMemory
 	}
 }
 

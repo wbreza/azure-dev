@@ -36,16 +36,16 @@ func NewValidationAgent(opts ...AgentOption) *ValidationAgent {
 }
 
 // ValidateTask analyzes the results of a task execution and provides validation
-func (a *ValidationAgent) ValidateTask(ctx context.Context, taskResult *types.TaskExecutionResult) (*types.TaskValidationResult, error) {
+func (a *ValidationAgent) ValidateTask(ctx context.Context, task *types.Task) (*types.TaskValidationResult, error) {
 	// Update task status to validating
-	taskResult.Task.Status = types.TaskValidating
-	taskResult.Task.UpdatedAt = time.Now()
+	task.Status = types.TaskValidating
+	task.UpdatedAt = time.Now()
 
 	// Create a new conversation buffer for validation
 	conversationBuffer := langchainmemory.NewConversationBuffer()
 
 	// Marshal task to JSON for context
-	taskJsonBytes, err := json.MarshalIndent(taskResult.Task, "", "  ")
+	taskJsonBytes, err := json.MarshalIndent(task, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal task to JSON: %w", err)
 	}
@@ -59,8 +59,8 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, taskResult *types.Ta
 	}
 
 	// Add execution evaluation context if available
-	if taskResult.Evaluation != nil {
-		evalJsonBytes, err := json.MarshalIndent(taskResult.Evaluation, "", "  ")
+	if task.Progress.Evaluation != nil {
+		evalJsonBytes, err := json.MarshalIndent(task.Progress.Evaluation, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal evaluation to JSON: %w", err)
 		}
@@ -74,7 +74,7 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, taskResult *types.Ta
 	}
 
 	// Add tool call results to conversation
-	for _, toolResult := range taskResult.ToolCalls {
+	for _, toolResult := range task.Progress.ToolCalls {
 		err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
 			Content: fmt.Sprintf(
 				"Tool call executed: '%s' with input: %s",
@@ -102,10 +102,9 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, taskResult *types.Ta
 	}
 
 	// Create prompt builder for validation
-	promptBuilder := NewConversationalPromptBuilder(
+	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(validationPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithWorkingMemory(StandardWorkingMemoryFormatter),
 		WithConversationBuffer(conversationBuffer),
 	)
 
@@ -117,16 +116,16 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, taskResult *types.Ta
 
 	// Create validation result
 	validationResult := &types.TaskValidationResult{
-		TaskExecutionResult: taskResult,
-		Evaluation:          evalResult,
+		Task:       task,
+		Evaluation: evalResult,
 	}
 
 	return validationResult, nil
 }
 
-func (a *ValidationAgent) evaluateTaskValidation(ctx context.Context, promptBuilder *ConversationalPromptBuilder) (*types.TaskValidationEvalResult, error) {
+func (a *ValidationAgent) evaluateTaskValidation(ctx context.Context, promptBuilder *PromptBuilder) (*types.TaskValidationEvalResult, error) {
 	// Build messages using the conversational prompt builder
-	messages, err := promptBuilder.BuildMessages(ctx, a.config.workingMemory)
+	messages, err := promptBuilder.BuildMessages(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build validation messages: %w", err)
 	}

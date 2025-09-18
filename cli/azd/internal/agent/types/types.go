@@ -59,13 +59,14 @@ func (ep *Plan) UpdateTaskStatus(taskID string, status TaskStatus) bool {
 }
 
 type ExecutePlanResult struct {
-	Goal  string
-	Tasks []TaskExecutionResult
+	Summary string
+	Plan    *Plan
 }
 
 type Task struct {
 	ID                 string
 	Status             TaskStatus
+	Progress           *TaskProgress
 	Description        string
 	ToolCalls          []*ToolCall
 	Rules              []string
@@ -131,9 +132,7 @@ type TaskExecutionEvalResult struct {
 	Evidence []string
 }
 
-type TaskExecutionResult struct {
-	Task       *Task
-	Status     TaskStatus
+type TaskProgress struct {
 	ToolCalls  []*ToolCallResult
 	Evaluation *TaskExecutionEvalResult
 }
@@ -165,6 +164,57 @@ type TaskValidationEvalResult struct {
 }
 
 type TaskValidationResult struct {
-	TaskExecutionResult *TaskExecutionResult
-	Evaluation          *TaskValidationEvalResult
+	Task       *Task
+	Evaluation *TaskValidationEvalResult
+}
+
+// PlanEvalResult represents the raw LLM response for plan evaluation
+type PlanEvalResult struct {
+	// Summary of the planning analysis
+	Summary string
+	// The planned goal
+	Goal string
+	// Structured plan with tasks
+	Tasks []*Task
+	// Insights about the planning approach
+	Insights []string
+}
+
+// PlanningResult represents the result of planning operation
+type PlanningResult struct {
+	Summary string
+	Plan    *Plan
+}
+
+// SummaryResult represents the result of summarizing an object
+type SummaryResult struct {
+	// Summary of the analyzed object
+	Summary string
+}
+
+// RoutingIntent represents the intent classification for user messages
+type RoutingIntent string
+
+const (
+	RoutingIntentConversational RoutingIntent = "conversational" // No action required, just conversation
+	RoutingIntentPlan           RoutingIntent = "plan"           // Needs to create or execute a plan
+	RoutingIntentValidate       RoutingIntent = "validate"       // Check if current plan is complete
+	RoutingIntentReplan         RoutingIntent = "replan"         // Modify/update existing plan
+	RoutingIntentProgress       RoutingIntent = "progress"       // Get detailed progress report
+)
+
+// RoutingResult represents the result of intent routing analysis
+type RoutingResult struct {
+	// Intent classification for the user message
+	Intent RoutingIntent
+	// Confidence score (0.0 to 1.0) for the classification
+	Confidence float64
+	// Reasoning for the intent classification
+	Reasoning string
+}
+
+// ProgressResult represents the result of analyzing plan progress
+type ProgressResult struct {
+	// Progress summary of completed and remaining work
+	Progress string
 }
