@@ -59,27 +59,31 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, task *types.Task) (*
 	}
 
 	// Add execution evaluation context if available
-	if task.Progress.Evaluation != nil {
-		evalJsonBytes, err := json.MarshalIndent(task.Progress.Evaluation, "", "  ")
+	if task.Progress != nil {
+		taskProgressBytes, err := json.MarshalIndent(task.Progress, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal evaluation to JSON: %w", err)
 		}
 
 		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
-			Content: fmt.Sprintf("Task execution evaluation: \n```json\n%s```\n", string(evalJsonBytes)),
+			Content: fmt.Sprintf("Task Progress: \n```json\n%s```\n", string(taskProgressBytes)),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to add evaluation context to conversation: %w", err)
+			return nil, fmt.Errorf("failed to add task progress to conversation: %w", err)
 		}
 	}
 
 	// Add tool call results to conversation
-	for _, toolResult := range task.Progress.ToolCalls {
+	for _, toolCall := range task.ToolCalls {
+		if toolCall.Progress == nil {
+			continue
+		}
+
 		err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
 			Content: fmt.Sprintf(
 				"Tool call executed: '%s' with input: %s",
-				toolResult.ToolCall.Tool,
-				toolResult.ToolCall.Input, // TODO: Truncate if too long
+				toolCall.Tool,
+				toolCall.Input, // TODO: Truncate if too long
 			),
 		})
 		if err != nil {
@@ -87,10 +91,10 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, task *types.Task) (*
 		}
 
 		var toolResultContent string
-		if toolResult.Error != "" {
-			toolResultContent = fmt.Sprintf("Tool execution error: %s", toolResult.Error)
+		if toolCall.Progress.Error != "" {
+			toolResultContent = fmt.Sprintf("Tool execution error: %s", toolCall.Progress.Error)
 		} else {
-			toolResultContent = toolResult.Output
+			toolResultContent = toolCall.Progress.Output
 		}
 
 		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.ToolChatMessage{

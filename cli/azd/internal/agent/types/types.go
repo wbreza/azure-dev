@@ -61,6 +61,12 @@ func (ep *Plan) UpdateTaskStatus(taskID string, status TaskStatus) bool {
 type ExecutePlanResult struct {
 	Summary string
 	Plan    *Plan
+	Message string // Message to return to user for input/confirmation
+}
+
+type TaskExecutionResult struct {
+	Task    *Task
+	Message string // Optional: when user input is needed, execution pauses
 }
 
 type Task struct {
@@ -124,27 +130,39 @@ func (ts TaskStatus) CanTransitionTo(target TaskStatus) bool {
 
 // The response of a task evaluation after all tool calls run for a given task
 type TaskExecutionEvalResult struct {
+	// Message to send to the user
+	Message string
 	// Summary of the tool calls and results
 	Summary string
-	// Insights derived from the tool calls and results
-	Insights []string
+	// Observations derived from the tool calls and results
+	Observations []string
 	// Evidence from the tool call responses to support task completion
 	Evidence []string
+	// Additional tool calls
+	Actions []*ToolCall
+	// Additional rules / constraints that must be applied during task completion
+	Rules []string
+	// Additional validation criteria that will need to be evaluated to mark a task as complete.
+	ValidationCriteria []string
 }
 
 type TaskProgress struct {
-	ToolCalls  []*ToolCallResult
-	Evaluation *TaskExecutionEvalResult
+	// Summary of the tool calls and results
+	Summary string
+	// Observations derived from the tool calls and results
+	Observations []string
+	// Evidence from the tool call responses to support task completion
+	Evidence []string
 }
 
 type ToolCall struct {
 	Tool      string
 	Input     string
 	Reasoning string
+	Progress  *ToolCallProgress
 }
 
-type ToolCallResult struct {
-	ToolCall  *ToolCall
+type ToolCallProgress struct {
 	Output    string
 	Error     string
 	StartTime time.Time
@@ -211,6 +229,8 @@ type RoutingResult struct {
 	Confidence float64
 	// Reasoning for the intent classification
 	Reasoning string
+	// Message to reply to user when high confidence
+	Message string
 }
 
 // ProgressResult represents the result of analyzing plan progress

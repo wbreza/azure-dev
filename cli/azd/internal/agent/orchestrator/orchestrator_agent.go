@@ -74,6 +74,16 @@ func (a *OrchestratorAgent) SendMessage(ctx context.Context, args ...string) (st
 	// Handle based on routing intent
 	switch routingResult.Intent {
 	case types.RoutingIntentConversational:
+		// If routing has high confidence and includes a direct message, use it
+		if routingResult.Confidence >= 0.8 && routingResult.Message != "" {
+			// Add the direct response to conversation history
+			err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, routingResult.Message)
+			if err != nil {
+				return "", fmt.Errorf("failed to add AI response to conversation: %w", err)
+			}
+			return routingResult.Message, nil
+		}
+		// Otherwise, use full conversational agent
 		return a.handleConversational(ctx)
 
 	case types.RoutingIntentPlan:
@@ -156,6 +166,16 @@ func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage stri
 		return "", fmt.Errorf("failed to execute plan: %w", err)
 	}
 
+	// Check if execution paused for user message
+	if execPlanResult.Message != "" {
+		// Add the message to conversation history and return it to user
+		err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, execPlanResult.Message)
+		if err != nil {
+			return "", fmt.Errorf("failed to add execution message to conversation: %w", err)
+		}
+		return execPlanResult.Message, nil
+	}
+
 	// Clear current plan if execution completed successfully
 	if a.currentPlan.IsComplete() {
 		a.currentPlan = nil
@@ -226,6 +246,16 @@ func (a *OrchestratorAgent) handleReplan(ctx context.Context, userMessage string
 	execPlanResult, err := executionAgent.ExecutePlan(ctx, a.currentPlan)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute updated plan: %w", err)
+	}
+
+	// Check if execution paused for user message
+	if execPlanResult.Message != "" {
+		// Add the message to conversation history and return it to user
+		err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, execPlanResult.Message)
+		if err != nil {
+			return "", fmt.Errorf("failed to add replan execution message to conversation: %w", err)
+		}
+		return execPlanResult.Message, nil
 	}
 
 	// Clear current plan if execution completed successfully

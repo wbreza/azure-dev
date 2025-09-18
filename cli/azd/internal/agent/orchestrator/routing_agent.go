@@ -66,23 +66,6 @@ func (a *RoutingAgent) RouteMessage(ctx context.Context) (*types.RoutingResult, 
 		}
 	}
 
-	// Add available tools context
-	var toolNames []string
-	for _, tool := range a.config.tools {
-		toolNames = append(toolNames, tool.Name())
-	}
-	toolsJsonBytes, err := json.MarshalIndent(toolNames, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal tools to JSON: %w", err)
-	}
-
-	err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
-		Content: fmt.Sprintf("Available tools: \n```json\n%s```\n", string(toolsJsonBytes)),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to add tools context to routing buffer: %w", err)
-	}
-
 	// Create prompt builder for routing
 	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(routingPromptTemplate),
@@ -135,5 +118,6 @@ func (a *RoutingAgent) evaluateRouting(ctx context.Context, promptBuilder *Promp
 		Intent:     routingEvalResponse.Intent,
 		Confidence: routingEvalResponse.Confidence,
 		Reasoning:  routingEvalResponse.Reasoning,
+		Message:    routingEvalResponse.Message,
 	}, nil
 }
