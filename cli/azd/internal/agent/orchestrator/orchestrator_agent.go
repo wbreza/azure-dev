@@ -168,6 +168,8 @@ func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage stri
 		return "", fmt.Errorf("failed to summarize results: %w", err)
 	}
 
+	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, summaryResult.Summary)
+
 	return summaryResult.Summary, nil
 }
 
@@ -189,10 +191,12 @@ func (a *OrchestratorAgent) handleProgress(ctx context.Context) (string, error) 
 
 	// Generate detailed progress report
 	progressAgent := NewProgressAgent(WithConfig(a.config))
-	progressResult, err := progressAgent.GenerateProgress(ctx, a.currentPlan)
+	progressResult, err := progressAgent.GenerateProgress(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate progress report: %w", err)
 	}
+
+	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, progressResult.Progress)
 
 	return progressResult.Progress, nil
 }
@@ -235,6 +239,8 @@ func (a *OrchestratorAgent) handleReplan(ctx context.Context, userMessage string
 	if err != nil {
 		return "", fmt.Errorf("failed to summarize replan results: %w", err)
 	}
+
+	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, summaryResult.Summary)
 
 	return summaryResult.Summary, nil
 }

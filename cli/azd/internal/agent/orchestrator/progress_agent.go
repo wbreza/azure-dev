@@ -35,8 +35,8 @@ func NewProgressAgent(opts ...AgentOption) *ProgressAgent {
 }
 
 // GenerateProgress analyzes a plan and creates a comprehensive progress summary
-func (a *ProgressAgent) GenerateProgress(ctx context.Context, plan *types.Plan) (*types.ProgressResult, error) {
-	if plan == nil {
+func (a *ProgressAgent) GenerateProgress(ctx context.Context) (*types.ProgressResult, error) {
+	if a.config.plan == nil {
 		return &types.ProgressResult{
 			Progress: "No active plan to analyze. Ready to start new work when you provide a goal or task.",
 		}, nil
@@ -46,7 +46,7 @@ func (a *ProgressAgent) GenerateProgress(ctx context.Context, plan *types.Plan) 
 	conversationBuffer := langchainmemory.NewConversationBuffer()
 
 	// Marshal plan to JSON for analysis
-	planJsonBytes, err := json.MarshalIndent(plan, "", "  ")
+	planJsonBytes, err := json.MarshalIndent(a.config.plan, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal plan to JSON: %w", err)
 	}
