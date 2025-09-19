@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
-
-	"github.com/tmc/langchaingo/llms"
 )
 
 // extractJSONFromMarkdown extracts JSON content from markdown-formatted responses.
@@ -17,11 +15,42 @@ import (
 // { "key": "value" }
 // ```
 func extractJSONFromMarkdown(response string) (string, error) {
-	// First, try to unmarshal the response directly in case it's already plain JSON
-	var testJSON interface{}
-	if err := json.Unmarshal([]byte(response), &testJSON); err == nil {
-		return response, nil
+	response = strings.TrimSpace(response)
+	if len(response) == 0 {
+		return "", nil
 	}
+
+	// Fast path: check first character to determine format
+	firstChar := response[0]
+
+	switch firstChar {
+	case '{', '[':
+		// Looks like direct JSON - try to unmarshal directly
+		var testJSON interface{}
+		if err := json.Unmarshal([]byte(response), &testJSON); err == nil {
+			return response, nil
+		}
+		// If direct JSON parsing failed, fall through to markdown extraction
+
+	case '`':
+		// Looks like markdown code block - skip direct JSON attempt and go straight to extraction
+		return extractFromMarkdownCodeBlocks(response)
+
+	default:
+		// Could be text with embedded JSON - try direct JSON first, then extraction
+		var testJSON interface{}
+		if err := json.Unmarshal([]byte(response), &testJSON); err == nil {
+			return response, nil
+		}
+	}
+
+	// Fallback to markdown extraction for all cases
+	return extractFromMarkdownCodeBlocks(response)
+}
+
+// extractFromMarkdownCodeBlocks handles the regex-based extraction from markdown
+func extractFromMarkdownCodeBlocks(response string) (string, error) {
+	var testJSON interface{}
 
 	// Look for JSON code blocks with various patterns
 	patterns := []string{
@@ -91,22 +120,4 @@ func unmarshalJSONResponse(response string, v interface{}) error {
 	}
 
 	return json.Unmarshal([]byte(jsonContent), v)
-}
-
-func fromMessageContents(messages []llms.MessageContent) []string {
-	rawMessages := []string{}
-	for _, msg := range messages {
-		for _, part := range msg.Parts {
-			textParts := []string{}
-			if textPart, ok := part.(*llms.TextContent); ok {
-				textParts = append(textParts, textPart.Text)
-			}
-
-			if len(textParts) > 0 {
-				rawMessages = append(rawMessages, strings.Join(textParts, "\n"))
-			}
-		}
-	}
-
-	return rawMessages
 }

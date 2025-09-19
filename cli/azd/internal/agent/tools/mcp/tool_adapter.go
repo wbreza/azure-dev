@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/mark3labs/mcp-go/client"
@@ -54,8 +55,10 @@ func (m *McpToolAdapter) Annotations() mcp.ToolAnnotation {
 func (m *McpToolAdapter) Call(ctx context.Context, input string) (string, error) {
 	// Parse input JSON
 	var args map[string]interface{}
-	if err := json.Unmarshal([]byte(input), &args); err != nil {
-		return "", fmt.Errorf("invalid JSON input: %w", err)
+	if strings.TrimSpace(input) != "" {
+		if err := json.Unmarshal([]byte(input), &args); err != nil {
+			return "", fmt.Errorf("invalid JSON input: %w", err)
+		}
 	}
 
 	// Create MCP call request

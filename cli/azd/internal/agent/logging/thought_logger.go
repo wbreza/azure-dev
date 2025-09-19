@@ -71,16 +71,11 @@ func (al *ThoughtLogger) HandleLLMStart(ctx context.Context, prompts []string) {
 
 // HandleChainStart is called when chain execution starts
 func (al *ThoughtLogger) HandleChainStart(ctx context.Context, inputs map[string]any) {
-	if description, ok := inputs["description"].(string); ok {
-		al.ThoughtChan <- Thought{
-			Thought: description,
-		}
-	}
 }
 
 // HandleChainEnd is called when chain execution ends
 func (al *ThoughtLogger) HandleChainEnd(ctx context.Context, outputs map[string]any) {
-	if summary, ok := outputs["summary"].(string); ok {
+	if summary, ok := outputs["observation"].(string); ok {
 		al.ThoughtChan <- Thought{
 			Thought: summary,
 		}

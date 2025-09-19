@@ -5,6 +5,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -13,10 +14,17 @@ import (
 	langchaingo_memory "github.com/tmc/langchaingo/memory"
 )
 
+// ContextItem represents a labeled context object for the system prompt
+type ContextItem struct {
+	Label  string
+	Object any
+}
+
 // PromptBuilder composes multi-message prompts for conversation-aware agents
 type PromptBuilder struct {
 	systemPrompt        string
 	tools               []common.AnnotatedTool
+	contexts            []ContextItem
 	conversationBuffer  *langchaingo_memory.ConversationBuffer
 	includeConversation bool
 }
@@ -49,6 +57,16 @@ func WithSystemPrompt(prompt string) ConversationalPromptOption {
 func WithPromptTools(tools []common.AnnotatedTool) ConversationalPromptOption {
 	return func(cpb *PromptBuilder) {
 		cpb.tools = tools
+	}
+}
+
+// WithContext adds a labeled context object to the system prompt
+func WithContext(label string, object any) ConversationalPromptOption {
+	return func(cpb *PromptBuilder) {
+		cpb.contexts = append(cpb.contexts, ContextItem{
+			Label:  label,
+			Object: object,
+		})
 	}
 }
 
@@ -104,6 +122,12 @@ func (pb *PromptBuilder) buildSystemMessage(ctx context.Context) (string, error)
 		}
 	}
 
+	// 3. Contexts section
+	contextsSection := pb.formatContextsSection()
+	if contextsSection != "" {
+		systemParts = append(systemParts, contextsSection)
+	}
+
 	return strings.Join(systemParts, "\n\n"), nil
 }
 
@@ -123,6 +147,44 @@ func (pb *PromptBuilder) formatToolsSection() string {
 	}
 
 	return strings.Join(toolParts, "\n")
+}
+
+// formatContextsSection creates formatted context sections with JSON
+func (pb *PromptBuilder) formatContextsSection() string {
+	if len(pb.contexts) == 0 {
+		return ""
+	}
+
+	var contextParts []string
+
+	for _, context := range pb.contexts {
+		// Skip nil objects
+		if context.Object == nil {
+			continue
+		}
+
+		// Add section header
+		contextParts = append(contextParts, fmt.Sprintf("## %s", context.Label))
+
+		// Marshal object to indented JSON
+		contextJSON, err := json.MarshalIndent(context.Object, "", "  ")
+		if err != nil {
+			// Skip sections with marshal errors as requested
+			continue
+		}
+
+		contextParts = append(contextParts, "```json")
+		contextParts = append(contextParts, string(contextJSON))
+		contextParts = append(contextParts, "```")
+		contextParts = append(contextParts, "") // Add spacing between contexts
+	}
+
+	// Remove trailing empty line if present
+	if len(contextParts) > 0 && contextParts[len(contextParts)-1] == "" {
+		contextParts = contextParts[:len(contextParts)-1]
+	}
+
+	return strings.Join(contextParts, "\n")
 }
 
 // buildConversationMessages converts conversation buffer to message format

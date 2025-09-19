@@ -124,7 +124,7 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		WithCleanup(cleanup),
 	)
 
-	azdAgent := orchestrator.NewOrchestratorAgent(
+	azdAgent := orchestrator.NewReactAgent(
 		orchestrator.WithTools(protectedTools...),
 		orchestrator.WithCallbacksHandler(chainedHandler),
 		orchestrator.WithModel(defaultModelContainer.Model),
