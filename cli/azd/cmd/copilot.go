@@ -111,9 +111,10 @@ func (a *copilotChatAction) Run(ctx context.Context) (*actions.ActionResult, err
 	for {
 		if userInput == "" {
 			messagePrompt := uxlib.NewPrompt(&uxlib.PromptOptions{
-				Message:     "You",
-				Required:    true,
-				HelpMessage: "Type a message to the agent",
+				Message:        "You",
+				Required:       true,
+				HelpMessage:    "Type a message to the agent",
+				IgnoreHintKeys: true,
 			})
 
 			userInput, err = messagePrompt.Ask(ctx)
@@ -128,6 +129,9 @@ func (a *copilotChatAction) Run(ctx context.Context) (*actions.ActionResult, err
 
 		outputMessage, err := agent.SendMessage(ctx, userInput)
 		if err != nil {
+			a.console.Message(ctx, "")
+			a.console.Message(ctx, output.WithErrorFormat(err.Error()))
+			a.console.Message(ctx, "")
 			log.Printf("sending message to agent: %v", err.Error())
 		}
 		if outputMessage != "" {

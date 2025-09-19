@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/tmc/langchaingo/callbacks"
@@ -120,7 +121,25 @@ func (fl *FileLogger) HandleText(ctx context.Context, text string) {
 
 // HandleLLMGenerateContentStart is called when LLM content generation starts
 func (fl *FileLogger) HandleLLMGenerateContentStart(ctx context.Context, ms []llms.MessageContent) {
-	fl.writeAndFlush("LLM_GENERATE_START: %d messages", len(ms))
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("LLM_GENERATE_START: %d messages\n", len(ms)))
+
+	for i, msg := range ms {
+		builder.WriteString(fmt.Sprintf("  Message[%d] Role: %s\n", i, msg.Role))
+		for j, part := range msg.Parts {
+			// Handle different content part types
+			switch p := part.(type) {
+			case llms.TextContent:
+				builder.WriteString(fmt.Sprintf("    Part[%d] (text): %s\n", j, p.Text))
+			case llms.ImageURLContent:
+				builder.WriteString(fmt.Sprintf("    Part[%d] (image): %s\n", j, p.URL))
+			default:
+				builder.WriteString(fmt.Sprintf("    Part[%d] (unknown): %v\n", j, part))
+			}
+		}
+	}
+
+	fl.writeAndFlush("%s", strings.TrimSuffix(builder.String(), "\n"))
 }
 
 // HandleLLMGenerateContentEnd is called when LLM content generation ends

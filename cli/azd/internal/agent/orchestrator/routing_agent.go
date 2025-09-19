@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
-	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/schema"
 )
 
 //go:embed prompts/routing.txt
@@ -37,40 +37,27 @@ func NewRoutingAgent(opts ...AgentOption) *RoutingAgent {
 // RouteMessage analyzes the conversation context and determines the appropriate intent
 func (a *RoutingAgent) RouteMessage(ctx context.Context) (*types.RoutingResult, error) {
 	// Create a new conversation buffer for routing analysis
-	conversationBuffer := langchainmemory.NewConversationBuffer()
+	conversationBuffer := langchainmemory.NewConversationBuffer(
+		langchainmemory.WithChatHistory(a.config.conversation.ChatHistory),
+	)
 
-	// Copy conversation history to routing buffer
-	for _, msg := range a.config.messages {
-		conversationBuffer.ChatHistory.AddMessage(ctx, msg)
-	}
-
-	// Add plan context if available
+	planContext := "Current Plan: No active plan exists"
 	if a.config.plan != nil {
 		planJsonBytes, err := json.MarshalIndent(a.config.plan, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal current plan to JSON: %w", err)
 		}
 
-		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
-			Content: fmt.Sprintf("Current plan context: \n```json\n%s```\n", string(planJsonBytes)),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to add plan context to routing buffer: %w", err)
-		}
-	} else {
-		err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
-			Content: "Current plan context: No active plan exists.",
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to add no-plan context to routing buffer: %w", err)
-		}
+		planContext = fmt.Sprintf("Current Plan: \n```json\n%s```\n", string(planJsonBytes))
 	}
+
+	fullSystemMessage := fmt.Sprintf("%s\n\n%s", routingPromptTemplate, planContext)
 
 	// Create prompt builder for routing
 	promptBuilder := NewPromptBuilder(
-		WithSystemPrompt(routingPromptTemplate),
+		WithSystemPrompt(fullSystemMessage),
 		WithPromptTools(a.config.tools),
-		WithConversationBuffer(conversationBuffer),
+		WithConversation(conversationBuffer),
 	)
 
 	// Run routing evaluation
@@ -78,6 +65,10 @@ func (a *RoutingAgent) RouteMessage(ctx context.Context) (*types.RoutingResult, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate routing: %w", err)
 	}
+
+	a.config.callbacksHandler.HandleAgentFinish(ctx, schema.AgentFinish{
+		Log: routingResult.Message,
+	})
 
 	return routingResult, nil
 }

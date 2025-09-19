@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
-	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/schema"
 )
 
 //go:embed prompts/planning.txt
@@ -36,33 +36,34 @@ func NewPlanningAgent(opts ...AgentOption) *PlanningAgent {
 }
 
 // Plan generates a new execution plan for the given goal
-func (a *PlanningAgent) Plan(ctx context.Context, goal string) (*types.PlanningResult, error) {
+func (a *PlanningAgent) Plan(ctx context.Context, userMessage string) (*types.PlanningResult, error) {
 	// Create a new conversation buffer for planning
-	conversationBuffer := langchainmemory.NewConversationBuffer()
+	conversationBuffer := langchainmemory.NewConversationBuffer(
+		langchainmemory.WithChatHistory(a.config.conversation.ChatHistory),
+	)
 
+	planContext := "Current Plan: No active plan exists"
 	if a.config.plan != nil {
-		existingPlanJson, err := json.MarshalIndent(a.config.plan, "", "  ")
+		planJsonBytes, err := json.MarshalIndent(a.config.plan, "", "  ")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to marshal current plan to JSON: %w", err)
 		}
 
-		existingPlan := fmt.Sprintf("Existing Plan:\n```json\n%s\n```", string(existingPlanJson))
-		conversationBuffer.ChatHistory.AddAIMessage(ctx, existingPlan)
+		planContext = fmt.Sprintf("Current Plan: \n```json\n%s```\n", string(planJsonBytes))
 	}
 
 	// Add the user goal as context
-	err := conversationBuffer.ChatHistory.AddMessage(ctx, llms.HumanChatMessage{
-		Content: goal,
-	})
-	if err != nil {
+	if err := conversationBuffer.ChatHistory.AddUserMessage(ctx, userMessage); err != nil {
 		return nil, fmt.Errorf("failed to add goal to conversation: %w", err)
 	}
 
 	// Create prompt builder for planning
+	fullSystemMessage := fmt.Sprintf("%s\n\n%s", planningPromptTemplate, planContext)
+
 	promptBuilder := NewPromptBuilder(
-		WithSystemPrompt(planningPromptTemplate),
+		WithSystemPrompt(fullSystemMessage),
 		WithPromptTools(a.config.tools),
-		WithConversationBuffer(conversationBuffer),
+		WithConversation(conversationBuffer),
 	)
 
 	// Evaluate the plan
@@ -85,14 +86,18 @@ func (a *PlanningAgent) Plan(ctx context.Context, goal string) (*types.PlanningR
 		task.UpdatedAt = time.Now()
 	}
 
-	summaryAgent := NewSummaryAgent(WithConfig(a.config))
-	summaryResult, err := summaryAgent.Summarize(ctx, plan)
-	if err != nil {
-		return nil, fmt.Errorf("failed to summarize plan: %w", err)
+	// Use the message from the planning evaluation or fall back to summary
+	logMessage := evalResult.Message
+	if logMessage == "" {
+		logMessage = evalResult.Summary
 	}
 
+	a.config.callbacksHandler.HandleAgentFinish(ctx, schema.AgentFinish{
+		Log: logMessage,
+	})
+
 	return &types.PlanningResult{
-		Summary: summaryResult.Summary,
+		Message: evalResult.Message,
 		Plan:    plan,
 	}, nil
 }
@@ -136,5 +141,3 @@ func (a *PlanningAgent) evaluatePlan(ctx context.Context, promptBuilder *PromptB
 		Insights: planEvalResponse.Insights,
 	}, nil
 }
-
-// TODO: UpdatePlan and other methods to be redesigned following the new patterns

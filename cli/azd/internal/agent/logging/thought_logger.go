@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/tmc/langchaingo/callbacks"
@@ -44,34 +43,6 @@ func (al *ThoughtLogger) HandleLLMGenerateContentStart(ctx context.Context, ms [
 
 // HandleLLMGenerateContentEnd is called when LLM content generation ends
 func (al *ThoughtLogger) HandleLLMGenerateContentEnd(ctx context.Context, res *llms.ContentResponse) {
-	// Parse and print thoughts as "THOUGHT: <content>" from content
-	// IF thought contains: "Do I need to use a tool?", omit this thought.
-
-	for _, choice := range res.Choices {
-		content := choice.Content
-
-		// Find all "Thought:" patterns and extract the content that follows
-		// (?is) flags: i=case insensitive, s=dot matches newlines
-		// .*? is non-greedy to stop at the first occurrence of next pattern or end
-		thoughtRegex := regexp.MustCompile(`(?is)thought:\s*(.*?)(?:\n\s*(?:action|final answer|observation|ai|thought):|$)`)
-		matches := thoughtRegex.FindAllStringSubmatch(content, -1)
-
-		for _, match := range matches {
-			if len(match) > 1 {
-				thought := strings.TrimSpace(match[1])
-				if thought != "" {
-					// Skip thoughts that contain "Do I need to use a tool?"
-					if !strings.Contains(strings.ToLower(thought), "do i need to use a tool?") {
-						if al.ThoughtChan != nil {
-							al.ThoughtChan <- Thought{
-								Thought: thought,
-							}
-						}
-					}
-				}
-			}
-		}
-	}
 }
 
 // HandleRetrieverStart is called when retrieval starts
@@ -100,10 +71,20 @@ func (al *ThoughtLogger) HandleLLMStart(ctx context.Context, prompts []string) {
 
 // HandleChainStart is called when chain execution starts
 func (al *ThoughtLogger) HandleChainStart(ctx context.Context, inputs map[string]any) {
+	if description, ok := inputs["description"].(string); ok {
+		al.ThoughtChan <- Thought{
+			Thought: description,
+		}
+	}
 }
 
 // HandleChainEnd is called when chain execution ends
 func (al *ThoughtLogger) HandleChainEnd(ctx context.Context, outputs map[string]any) {
+	if summary, ok := outputs["summary"].(string); ok {
+		al.ThoughtChan <- Thought{
+			Thought: summary,
+		}
+	}
 }
 
 // HandleChainError is called when chain execution fails
@@ -112,6 +93,12 @@ func (al *ThoughtLogger) HandleChainError(ctx context.Context, err error) {
 
 // HandleAgentAction is called when an agent action is planned
 func (al *ThoughtLogger) HandleAgentAction(ctx context.Context, action schema.AgentAction) {
+	if action.Log != "" {
+		al.ThoughtChan <- Thought{
+			Thought: action.Log,
+		}
+	}
+
 	// Print "Calling <action>"
 	// Inspect action.ToolInput. Attempt to parse input as JSON
 	// If is valid JSON and contains a param 'filename' then print filename.

@@ -12,6 +12,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/schema"
 )
 
 //go:embed prompts/progress.txt
@@ -43,7 +44,9 @@ func (a *ProgressAgent) GenerateProgress(ctx context.Context) (*types.ProgressRe
 	}
 
 	// Create a new conversation buffer for progress analysis
-	conversationBuffer := langchainmemory.NewConversationBuffer()
+	conversationBuffer := langchainmemory.NewConversationBuffer(
+		langchainmemory.WithChatHistory(a.config.conversation.ChatHistory),
+	)
 
 	// Marshal plan to JSON for analysis
 	planJsonBytes, err := json.MarshalIndent(a.config.plan, "", "  ")
@@ -52,7 +55,7 @@ func (a *ProgressAgent) GenerateProgress(ctx context.Context) (*types.ProgressRe
 	}
 
 	// Add plan context to conversation
-	err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.HumanChatMessage{
+	err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
 		Content: fmt.Sprintf("Plan to analyze for progress: \n```json\n%s```\n", string(planJsonBytes)),
 	})
 	if err != nil {
@@ -63,7 +66,7 @@ func (a *ProgressAgent) GenerateProgress(ctx context.Context) (*types.ProgressRe
 	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(progressPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithConversationBuffer(conversationBuffer),
+		WithConversation(conversationBuffer),
 	)
 
 	// Run progress evaluation
@@ -71,6 +74,10 @@ func (a *ProgressAgent) GenerateProgress(ctx context.Context) (*types.ProgressRe
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate progress: %w", err)
 	}
+
+	a.config.callbacksHandler.HandleAgentFinish(ctx, schema.AgentFinish{
+		Log: progressResult.Progress,
+	})
 
 	return progressResult, nil
 }

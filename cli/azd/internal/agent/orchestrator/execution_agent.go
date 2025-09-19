@@ -15,6 +15,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/llms"
 	langchainmemory "github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/schema"
 )
 
 //go:embed prompts/execution.txt
@@ -22,10 +23,8 @@ var executionPromptTemplate string
 
 // ExecutionAgent executes tasks using available tools in an enhanced ReAct loop
 type ExecutionAgent struct {
-	config          *AgentConfig
-	toolsMap        map[string]common.AnnotatedTool
-	promptBuilder   *PromptBuilder
-	validationAgent *ValidationAgent
+	config   *AgentConfig
+	toolsMap map[string]common.AnnotatedTool
 }
 
 // NewExecutionAgent creates a new execution agent with its own conversation buffer and validation agent
@@ -35,28 +34,14 @@ func NewExecutionAgent(opts ...AgentOption) *ExecutionAgent {
 		option(config)
 	}
 
-	conversationBuffer := langchainmemory.NewConversationBuffer()
-
-	// Use the embedded prompt template as the system prompt (contains JSON schema and core instructions)
-	promptBuilder := NewPromptBuilder(
-		WithSystemPrompt(executionPromptTemplate),
-		WithPromptTools(config.tools),
-		WithConversationBuffer(conversationBuffer),
-	)
-
 	toolsMap := make(map[string]common.AnnotatedTool)
 	for _, tool := range config.tools {
 		toolsMap[tool.Name()] = tool
 	}
 
-	// Create validation agent for task validation
-	validationAgent := NewValidationAgent(WithConfig(config))
-
 	return &ExecutionAgent{
-		config:          config,
-		toolsMap:        toolsMap,
-		promptBuilder:   promptBuilder,
-		validationAgent: validationAgent,
+		toolsMap: toolsMap,
+		config:   config,
 	}
 }
 
@@ -67,7 +52,7 @@ func (a *ExecutionAgent) ExecutePlan(ctx context.Context, plan *types.Plan) (*ty
 
 	for _, task := range plan.Tasks {
 		// Execute each task in sequence
-		taskResult, err := a.ExecuteTask(ctx, task)
+		taskResult, err := a.executeTask(ctx, task)
 		if err != nil {
 			// If an actual error is returned, stop and propagate it up
 			return nil, fmt.Errorf("failed to execute task %s: %w", task.ID, err)
@@ -89,7 +74,8 @@ func (a *ExecutionAgent) ExecutePlan(ctx context.Context, plan *types.Plan) (*ty
 
 	if plan.IsComplete() {
 		summaryAgent := NewSummaryAgent(WithConfig(a.config))
-		summaryResult, err := summaryAgent.Summarize(ctx, planResult)
+		executionDescription := "Summarize the executed plan results. Include task level results as bullet points."
+		summaryResult, err := summaryAgent.Summarize(ctx, executionDescription, planResult)
 		if err != nil {
 			return nil, err
 		}
@@ -97,28 +83,39 @@ func (a *ExecutionAgent) ExecutePlan(ctx context.Context, plan *types.Plan) (*ty
 		planResult.Summary = summaryResult.Summary
 	}
 
+	agentLog := planResult.Summary
+	if planResult.Message != "" {
+		agentLog = planResult.Message
+	}
+
+	a.config.callbacksHandler.HandleAgentFinish(ctx, schema.AgentFinish{
+		Log: agentLog,
+	})
+
 	return planResult, nil
 }
 
-// ExecuteTask executes a complete task with its own conversation context using ReAct loop
-func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*types.TaskExecutionResult, error) {
+// executeTask executes a complete task with its own conversation context using ReAct loop
+func (a *ExecutionAgent) executeTask(ctx context.Context, task *types.Task) (*types.TaskExecutionResult, error) {
+	// Create a new conversation buffer for this task
+	conversationBuffer := langchainmemory.NewConversationBuffer(
+		langchainmemory.WithChatHistory(a.config.conversation.ChatHistory),
+	)
+
+	a.config.callbacksHandler.HandleChainStart(ctx, map[string]any{
+		"description": task.Description,
+	})
+
 	// Update task status to in progress at the beginning
 	task.Status = types.TaskInProgress
 	task.UpdatedAt = time.Now()
 
-	// Create a new conversation buffer for this task
-	conversationBuffer := langchainmemory.NewConversationBuffer()
-
 	// ReAct loop: Execute tools -> Evaluate -> Repeat until complete or max iterations
 	iteration := 0
-	maxIterations := a.config.maxIterations
-	if maxIterations <= 0 {
-		maxIterations = 5 // Default max iterations
-	}
 
 	var lastEvaluation *types.TaskExecutionEvalResult
 
-	for iteration < maxIterations {
+	for iteration < a.config.maxIterations {
 		iteration++
 
 		// Execute tool calls for the task
@@ -156,7 +153,7 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 					return nil, fmt.Errorf("failed to add tool call message to conversation: %w", err)
 				}
 
-				err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.ToolChatMessage{
+				err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
 					Content: toolCall.Progress.Output,
 				})
 				if err != nil {
@@ -169,7 +166,7 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 		taskPromptBuilder := NewPromptBuilder(
 			WithSystemPrompt(executionPromptTemplate),
 			WithPromptTools(a.config.tools),
-			WithConversationBuffer(conversationBuffer),
+			WithConversation(conversationBuffer),
 		)
 
 		// Evaluate the task execution to get evidence and observations
@@ -182,8 +179,16 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 			return nil, fmt.Errorf("failed to evaluate task execution for task %s (iteration %d): %w", task.ID, iteration, err)
 		}
 
+		lastEvaluation = evalResult
+
 		// Update task metadata with new discoveries
 		a.updateTaskMetadata(task, evalResult)
+
+		a.config.callbacksHandler.HandleChainEnd(ctx, map[string]any{
+			"summary":      task.Progress.Summary,
+			"observations": task.Progress.Observations,
+			"evidence":     task.Progress.Evidence,
+		})
 
 		// Check if we need to pause for user message
 		if evalResult.Message != "" {
@@ -203,14 +208,14 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 	}
 
 	// Check if we hit max iterations with pending actions
-	if iteration >= maxIterations {
+	if iteration >= a.config.maxIterations {
 		if lastEvaluation != nil && len(lastEvaluation.Actions) > 0 {
 			task.Status = types.TaskInProgress
 			task.UpdatedAt = time.Now()
 
 			return &types.TaskExecutionResult{
 				Task:    task,
-				Message: fmt.Sprintf("Maximum iterations (%d) reached but more actions are pending. Do you want to continue?", maxIterations),
+				Message: fmt.Sprintf("Maximum iterations (%d) reached but more actions are pending. Do you want to continue?", a.config.maxIterations),
 			}, nil
 		}
 	}
@@ -220,7 +225,8 @@ func (a *ExecutionAgent) ExecuteTask(ctx context.Context, task *types.Task) (*ty
 	task.UpdatedAt = time.Now()
 
 	// Send to validation agent for validation
-	validationResult, err := a.validationAgent.ValidateTask(ctx, task)
+	validationAgent := NewValidationAgent(WithConfig(a.config))
+	validationResult, err := validationAgent.ValidateTask(ctx, task)
 	if err != nil {
 		task.Status = types.TaskValidationFailed
 		task.UpdatedAt = time.Now()
@@ -282,6 +288,13 @@ func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) erro
 			continue
 		}
 
+		a.config.callbacksHandler.HandleAgentAction(ctx, schema.AgentAction{
+			Tool:      toolCall.Tool,
+			ToolID:    toolCall.Tool,
+			ToolInput: toolCall.Input,
+			Log:       toolCall.Reasoning,
+		})
+
 		// Find the tool in our tools map
 		tool, exists := a.toolsMap[toolCall.Tool]
 		if !exists {
@@ -291,30 +304,33 @@ func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) erro
 		startTime := time.Now()
 
 		// Marshal the input to JSON string for the tool
-		var inputJSON string
+		inputValue := ""
 		if toolCall.Input != "" {
 			// Parse the input as JSON to validate it, then re-marshal
 			var parsedInput interface{}
 			if err := json.Unmarshal([]byte(toolCall.Input), &parsedInput); err != nil {
-				return fmt.Errorf("invalid JSON input for tool '%s': %w", toolCall.Tool, err)
+				// Not JSON use raw string
+				inputValue = toolCall.Input
+			} else {
+				jsonBytes, err := json.Marshal(parsedInput)
+				if err != nil {
+					return fmt.Errorf("failed to marshal input for tool '%s': %w", toolCall.Tool, err)
+				}
+				inputValue = string(jsonBytes)
 			}
-
-			inputBytes, err := json.Marshal(parsedInput)
-			if err != nil {
-				return fmt.Errorf("failed to marshal input for tool '%s': %w", toolCall.Tool, err)
-			}
-			inputJSON = string(inputBytes)
-		} else {
-			inputJSON = "{}" // Default empty JSON object
 		}
 
 		// Execute the tool
-		output, err := tool.Call(ctx, inputJSON)
+		a.config.callbacksHandler.HandleToolStart(ctx, inputValue)
+		toolOutput, err := tool.Call(ctx, inputValue)
+		if err != nil {
+			a.config.callbacksHandler.HandleToolError(ctx, err)
+		}
 		endTime := time.Now()
 
 		// Create the tool call result
 		toolCall.Progress = &types.ToolCallProgress{
-			Output:    output,
+			Output:    toolOutput,
 			StartTime: startTime,
 			EndTime:   endTime,
 			Duration:  endTime.Sub(startTime),
@@ -324,6 +340,8 @@ func (a *ExecutionAgent) invokeTools(ctx context.Context, task *types.Task) erro
 			toolCall.Progress.Error = err.Error()
 			return fmt.Errorf("tool '%s' execution failed: %w", toolCall.Tool, err)
 		}
+
+		a.config.callbacksHandler.HandleToolEnd(ctx, toolOutput)
 	}
 
 	return nil

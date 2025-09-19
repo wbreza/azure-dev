@@ -97,7 +97,7 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, task *types.Task) (*
 			toolResultContent = toolCall.Progress.Output
 		}
 
-		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.ToolChatMessage{
+		err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
 			Content: toolResultContent,
 		})
 		if err != nil {
@@ -109,7 +109,7 @@ func (a *ValidationAgent) ValidateTask(ctx context.Context, task *types.Task) (*
 	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(validationPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithConversationBuffer(conversationBuffer),
+		WithConversation(conversationBuffer),
 	)
 
 	// Run evaluation

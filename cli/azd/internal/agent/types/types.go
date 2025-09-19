@@ -1,12 +1,15 @@
 package types
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type Plan struct {
-	Goal      string
-	Tasks     []*Task
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Goal      string    `json:"goal"`
+	Tasks     []*Task   `json:"tasks"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // GetTaskByID returns a task by its ID, or nil if not found
@@ -59,25 +62,25 @@ func (ep *Plan) UpdateTaskStatus(taskID string, status TaskStatus) bool {
 }
 
 type ExecutePlanResult struct {
-	Summary string
-	Plan    *Plan
-	Message string // Message to return to user for input/confirmation
+	Summary string `json:"summary"`
+	Plan    *Plan  `json:"plan"`
+	Message string `json:"message"` // Message to return to user for input/confirmation
 }
 
 type TaskExecutionResult struct {
-	Task    *Task
-	Message string // Optional: when user input is needed, execution pauses
+	Task    *Task  `json:"task"`
+	Message string `json:"message"` // Optional: when user input is needed, execution pauses
 }
 
 type Task struct {
-	ID                 string
-	Status             TaskStatus
-	Progress           *TaskProgress
-	Description        string
-	ToolCalls          []*ToolCall
-	Rules              []string
-	ValidationCriteria []string
-	UpdatedAt          time.Time
+	ID                 string        `json:"id"`
+	Status             TaskStatus    `json:"status"`
+	Progress           *TaskProgress `json:"progress"`
+	Description        string        `json:"description"`
+	ToolCalls          []*ToolCall   `json:"toolCalls"`
+	Rules              []string      `json:"rules"`
+	ValidationCriteria []string      `json:"validationCriteria"`
+	UpdatedAt          time.Time     `json:"updatedAt"`
 }
 
 // TaskStatus represents the status of a task in the execution pipeline
@@ -131,83 +134,107 @@ func (ts TaskStatus) CanTransitionTo(target TaskStatus) bool {
 // The response of a task evaluation after all tool calls run for a given task
 type TaskExecutionEvalResult struct {
 	// Message to send to the user
-	Message string
+	Message string `json:"message"`
 	// Summary of the tool calls and results
-	Summary string
+	Summary string `json:"summary"`
 	// Observations derived from the tool calls and results
-	Observations []string
+	Observations []string `json:"observations"`
 	// Evidence from the tool call responses to support task completion
-	Evidence []string
+	Evidence []string `json:"evidence"`
 	// Additional tool calls
-	Actions []*ToolCall
+	Actions []*ToolCall `json:"actions"`
 	// Additional rules / constraints that must be applied during task completion
-	Rules []string
+	Rules []string `json:"rules"`
 	// Additional validation criteria that will need to be evaluated to mark a task as complete.
-	ValidationCriteria []string
+	ValidationCriteria []string `json:"validationCriteria"`
 }
 
 type TaskProgress struct {
 	// Summary of the tool calls and results
-	Summary string
+	Summary string `json:"summary"`
 	// Observations derived from the tool calls and results
-	Observations []string
+	Observations []string `json:"observations"`
 	// Evidence from the tool call responses to support task completion
-	Evidence []string
+	Evidence []string `json:"evidence"`
 }
 
 type ToolCall struct {
-	Tool      string
-	Input     string
-	Reasoning string
-	Progress  *ToolCallProgress
+	Tool      string            `json:"tool"`
+	Input     string            `json:"input"`
+	Reasoning string            `json:"reasoning"`
+	Progress  *ToolCallProgress `json:"progress"`
+}
+
+// MarshalJSON implements custom JSON marshalling for ToolCall
+// Excludes the Progress field from the JSON output
+func (tc ToolCall) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Tool      string `json:"tool"`
+		Input     string `json:"input"`
+		Reasoning string `json:"reasoning"`
+		// Progress field intentionally omitted
+	}{
+		Tool:      tc.Tool,
+		Input:     tc.Input,
+		Reasoning: tc.Reasoning,
+	})
+}
+
+// UnmarshalJSON implements custom JSON unmarshalling for ToolCall
+// Includes all fields including Progress for normal unmarshalling behavior
+func (tc *ToolCall) UnmarshalJSON(data []byte) error {
+	type Alias ToolCall
+	return json.Unmarshal(data, (*Alias)(tc))
 }
 
 type ToolCallProgress struct {
-	Output    string
-	Error     string
-	StartTime time.Time
-	EndTime   time.Time
-	Duration  time.Duration
+	Output    string        `json:"output"`
+	Error     string        `json:"error"`
+	StartTime time.Time     `json:"startTime"`
+	EndTime   time.Time     `json:"endTime"`
+	Duration  time.Duration `json:"duration"`
 }
 
 type TaskValidationEvalResult struct {
 	// Summary of the validation analysis
-	Summary string
+	Summary string `json:"summary"`
 	// Recommended status after validation
-	Status TaskStatus
+	Status TaskStatus `json:"status"`
 	// Detailed insights from the validation analysis and why it failed
-	Insights []string
+	Insights []string `json:"insights"`
 	// Recommendations for next steps to take to pass validation
-	Recommendations []string
+	Recommendations []string `json:"recommendations"`
 }
 
 type TaskValidationResult struct {
-	Task       *Task
-	Evaluation *TaskValidationEvalResult
+	Task       *Task                     `json:"task"`
+	Evaluation *TaskValidationEvalResult `json:"evaluation"`
 }
 
 // PlanEvalResult represents the raw LLM response for plan evaluation
 type PlanEvalResult struct {
 	// Summary of the planning analysis
-	Summary string
+	Summary string `json:"summary"`
 	// The planned goal
-	Goal string
+	Goal string `json:"goal"`
 	// Structured plan with tasks
-	Tasks []*Task
+	Tasks []*Task `json:"tasks"`
 	// Insights about the planning approach
-	Insights []string
+	Insights []string `json:"insights"`
+	// Message to send to user (summary + confirmation request when review is needed)
+	Message string `json:"message"`
 }
 
 // PlanningResult represents the result of planning operation
 type PlanningResult struct {
-	Summary string
-	Plan    *Plan
+	Plan    *Plan  `json:"plan"`
+	Message string `json:"message"` // Message from planning agent to user
 }
 
 // SummaryResult represents the result of summarizing an object
 type SummaryResult struct {
 	// Summary of the analyzed object
-	Summary string
+	Summary string `json:"summary"`
 }
 
 // RoutingIntent represents the intent classification for user messages
@@ -216,6 +243,7 @@ type RoutingIntent string
 const (
 	RoutingIntentConversational RoutingIntent = "conversational" // No action required, just conversation
 	RoutingIntentPlan           RoutingIntent = "plan"           // Needs to create or execute a plan
+	RoutingIntentExecute        RoutingIntent = "execute"        // Execute an existing plan
 	RoutingIntentValidate       RoutingIntent = "validate"       // Check if current plan is complete
 	RoutingIntentReplan         RoutingIntent = "replan"         // Modify/update existing plan
 	RoutingIntentProgress       RoutingIntent = "progress"       // Get detailed progress report
@@ -224,17 +252,17 @@ const (
 // RoutingResult represents the result of intent routing analysis
 type RoutingResult struct {
 	// Intent classification for the user message
-	Intent RoutingIntent
+	Intent RoutingIntent `json:"intent"`
 	// Confidence score (0.0 to 1.0) for the classification
-	Confidence float64
+	Confidence float64 `json:"confidence"`
 	// Reasoning for the intent classification
-	Reasoning string
+	Reasoning string `json:"reasoning"`
 	// Message to reply to user when high confidence
-	Message string
+	Message string `json:"message"`
 }
 
 // ProgressResult represents the result of analyzing plan progress
 type ProgressResult struct {
 	// Progress summary of completed and remaining work
-	Progress string
+	Progress string `json:"progress"`
 }

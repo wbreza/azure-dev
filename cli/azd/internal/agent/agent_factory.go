@@ -128,8 +128,6 @@ func (f *AgentFactory) Create(ctx context.Context, opts ...AgentCreateOption) (A
 		orchestrator.WithTools(protectedTools...),
 		orchestrator.WithCallbacksHandler(chainedHandler),
 		orchestrator.WithModel(defaultModelContainer.Model),
-		orchestrator.WithMaxIterations(100),
-		orchestrator.WithMaxFailedCycles(3),
 		orchestrator.WithThoughtChannel(thoughtChan),
 		orchestrator.WithCleanup(cleanup),
 	)

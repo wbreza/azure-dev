@@ -35,7 +35,7 @@ func NewSummaryAgent(opts ...AgentOption) *SummaryAgent {
 }
 
 // Summarize analyzes an object and creates a concise summary
-func (a *SummaryAgent) Summarize(ctx context.Context, obj interface{}) (*types.SummaryResult, error) {
+func (a *SummaryAgent) Summarize(ctx context.Context, description string, obj interface{}) (*types.SummaryResult, error) {
 	// Create a new conversation buffer for summarization
 	conversationBuffer := langchainmemory.NewConversationBuffer()
 
@@ -45,9 +45,10 @@ func (a *SummaryAgent) Summarize(ctx context.Context, obj interface{}) (*types.S
 		return nil, fmt.Errorf("failed to marshal object to JSON: %w", err)
 	}
 
-	// Add object context to conversation
-	err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.HumanChatMessage{
-		Content: fmt.Sprintf("Object to summarize: \n```json\n%s```\n", string(objJsonBytes)),
+	// Add description and object context to conversation
+	content := fmt.Sprintf("Summary Instructions: %s\n\nObject to summarize: \n```json\n%s```\n", description, string(objJsonBytes))
+	err = conversationBuffer.ChatHistory.AddMessage(ctx, llms.AIChatMessage{
+		Content: content,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to add object context to conversation: %w", err)
@@ -56,7 +57,7 @@ func (a *SummaryAgent) Summarize(ctx context.Context, obj interface{}) (*types.S
 	// Create prompt builder for summarization
 	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(summaryPromptTemplate),
-		WithConversationBuffer(conversationBuffer),
+		WithConversation(conversationBuffer),
 	)
 
 	// Run summarization evaluation

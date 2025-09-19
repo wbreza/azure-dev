@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/azure/azure-dev/cli/azd/internal/agent/logging"
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	uxlib "github.com/azure/azure-dev/cli/azd/pkg/ux"
 	"github.com/fatih/color"
@@ -21,8 +22,6 @@ var conversationPromptTemplate string
 
 // OrchestratorAgent manages the enhanced ReAct loop with planning, execution, and validation
 type OrchestratorAgent struct {
-	conversationBuffer *memory.ConversationBuffer
-
 	// State management
 	currentPlan *types.Plan
 
@@ -38,10 +37,32 @@ func NewOrchestratorAgent(opts ...AgentOption) *OrchestratorAgent {
 		option(config)
 	}
 
+	if config.callbacksHandler == nil {
+		fileLogger, _, _ := logging.NewFileLoggerDefault()
+
+		config.callbacksHandler = fileLogger
+	}
+
+	if config.conversation == nil {
+		config.conversation = memory.NewConversationBuffer()
+	}
+
+	if config.maxIterations == 0 {
+		config.maxIterations = 100
+	}
+
+	if config.maxFailedCycles == 0 {
+		config.maxFailedCycles = 3
+	}
+
+	if config.thoughtChan == nil {
+		thoughtChan := make(chan logging.Thought)
+		config.thoughtChan = thoughtChan
+	}
+
 	return &OrchestratorAgent{
-		config:             config,
-		conversationBuffer: memory.NewConversationBuffer(),
-		currentPlan:        nil,
+		config:      config,
+		currentPlan: nil,
 	}
 }
 
@@ -60,7 +81,7 @@ func (a *OrchestratorAgent) SendMessage(ctx context.Context, args ...string) (st
 	}()
 
 	userMessage := strings.Join(args, "\n")
-	if err := a.conversationBuffer.ChatHistory.AddUserMessage(ctx, userMessage); err != nil {
+	if err := a.config.conversation.ChatHistory.AddUserMessage(ctx, userMessage); err != nil {
 		return "", err
 	}
 
@@ -77,7 +98,7 @@ func (a *OrchestratorAgent) SendMessage(ctx context.Context, args ...string) (st
 		// If routing has high confidence and includes a direct message, use it
 		if routingResult.Confidence >= 0.8 && routingResult.Message != "" {
 			// Add the direct response to conversation history
-			err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, routingResult.Message)
+			err = a.config.conversation.ChatHistory.AddAIMessage(ctx, routingResult.Message)
 			if err != nil {
 				return "", fmt.Errorf("failed to add AI response to conversation: %w", err)
 			}
@@ -86,14 +107,14 @@ func (a *OrchestratorAgent) SendMessage(ctx context.Context, args ...string) (st
 		// Otherwise, use full conversational agent
 		return a.handleConversational(ctx)
 
-	case types.RoutingIntentPlan:
+	case types.RoutingIntentReplan, types.RoutingIntentPlan:
 		return a.handlePlanning(ctx, userMessage)
+
+	case types.RoutingIntentExecute:
+		return a.handleExecution(ctx)
 
 	case types.RoutingIntentValidate:
 		return a.handleValidation(ctx)
-
-	case types.RoutingIntentReplan:
-		return a.handleReplan(ctx, userMessage)
 
 	case types.RoutingIntentProgress:
 		return a.handleProgress(ctx)
@@ -110,7 +131,7 @@ func (a *OrchestratorAgent) handleConversational(ctx context.Context) (string, e
 	promptBuilder := NewPromptBuilder(
 		WithSystemPrompt(conversationPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithConversationBuffer(a.conversationBuffer),
+		WithConversation(a.config.conversation),
 	)
 
 	// Build messages using the prompt builder
@@ -139,7 +160,7 @@ func (a *OrchestratorAgent) handleConversational(ctx context.Context) (string, e
 	}
 
 	// Add response to conversation history
-	err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, responseText)
+	err = a.config.conversation.ChatHistory.AddAIMessage(ctx, responseText)
 	if err != nil {
 		return "", fmt.Errorf("failed to add AI response to conversation: %w", err)
 	}
@@ -150,7 +171,7 @@ func (a *OrchestratorAgent) handleConversational(ctx context.Context) (string, e
 // handlePlanning creates and executes a new plan
 func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage string) (string, error) {
 	// Create new plan
-	planningAgent := NewPlanningAgent(WithConfig(a.config))
+	planningAgent := NewPlanningAgent(WithConfig(a.config), WithPlan(a.currentPlan))
 	planningResult, err := planningAgent.Plan(ctx, userMessage)
 	if err != nil {
 		return "", fmt.Errorf("failed to create plan: %w", err)
@@ -159,8 +180,25 @@ func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage stri
 	// Store the current plan
 	a.currentPlan = planningResult.Plan
 
-	// Execute the plan
-	executionAgent := NewExecutionAgent(WithConfig(a.config))
+	if planningResult.Message != "" {
+		if err := a.config.conversation.ChatHistory.AddAIMessage(ctx, planningResult.Message); err != nil {
+			return "", err
+		}
+
+		return planningResult.Message, nil
+	}
+
+	return a.handleExecution(ctx)
+}
+
+// handleExecution executes an existing plan
+func (a *OrchestratorAgent) handleExecution(ctx context.Context) (string, error) {
+	if a.currentPlan == nil {
+		return "There is no active plan to execute. Would you like me to help you create one?", nil
+	}
+
+	// Execute the current plan
+	executionAgent := NewExecutionAgent(WithConfig(a.config), WithPlan(a.currentPlan))
 	execPlanResult, err := executionAgent.ExecutePlan(ctx, a.currentPlan)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute plan: %w", err)
@@ -169,7 +207,7 @@ func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage stri
 	// Check if execution paused for user message
 	if execPlanResult.Message != "" {
 		// Add the message to conversation history and return it to user
-		err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, execPlanResult.Message)
+		err = a.config.conversation.ChatHistory.AddAIMessage(ctx, execPlanResult.Message)
 		if err != nil {
 			return "", fmt.Errorf("failed to add execution message to conversation: %w", err)
 		}
@@ -181,16 +219,9 @@ func (a *OrchestratorAgent) handlePlanning(ctx context.Context, userMessage stri
 		a.currentPlan = nil
 	}
 
-	// Create summary of the execution results
-	summaryAgent := NewSummaryAgent(WithConfig(a.config))
-	summaryResult, err := summaryAgent.Summarize(ctx, execPlanResult)
-	if err != nil {
-		return "", fmt.Errorf("failed to summarize results: %w", err)
-	}
+	a.config.conversation.ChatHistory.AddAIMessage(ctx, execPlanResult.Summary)
 
-	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, summaryResult.Summary)
-
-	return summaryResult.Summary, nil
+	return execPlanResult.Summary, nil
 }
 
 // handleValidation checks the status of the current plan
@@ -210,69 +241,15 @@ func (a *OrchestratorAgent) handleProgress(ctx context.Context) (string, error) 
 	}
 
 	// Generate detailed progress report
-	progressAgent := NewProgressAgent(WithConfig(a.config))
+	progressAgent := NewProgressAgent(WithConfig(a.config), WithPlan(a.currentPlan))
 	progressResult, err := progressAgent.GenerateProgress(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate progress report: %w", err)
 	}
 
-	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, progressResult.Progress)
+	a.config.conversation.ChatHistory.AddAIMessage(ctx, progressResult.Progress)
 
 	return progressResult.Progress, nil
-}
-
-// handleReplan modifies or updates the existing plan
-func (a *OrchestratorAgent) handleReplan(ctx context.Context, userMessage string) (string, error) {
-	if a.currentPlan == nil {
-		// No existing plan, treat as new planning
-		return a.handlePlanning(ctx, userMessage)
-	}
-
-	// Create context message that includes the current plan and new requirements
-	planContext := fmt.Sprintf("Current plan: %s\nNew requirement: %s", a.currentPlan.Goal, userMessage)
-
-	// Create updated plan
-	planningAgent := NewPlanningAgent(WithConfig(a.config))
-	planningResult, err := planningAgent.Plan(ctx, planContext)
-	if err != nil {
-		return "", fmt.Errorf("failed to create updated plan: %w", err)
-	}
-
-	// Update the current plan
-	a.currentPlan = planningResult.Plan
-
-	// Execute the updated plan
-	executionAgent := NewExecutionAgent(WithConfig(a.config))
-	execPlanResult, err := executionAgent.ExecutePlan(ctx, a.currentPlan)
-	if err != nil {
-		return "", fmt.Errorf("failed to execute updated plan: %w", err)
-	}
-
-	// Check if execution paused for user message
-	if execPlanResult.Message != "" {
-		// Add the message to conversation history and return it to user
-		err = a.conversationBuffer.ChatHistory.AddAIMessage(ctx, execPlanResult.Message)
-		if err != nil {
-			return "", fmt.Errorf("failed to add replan execution message to conversation: %w", err)
-		}
-		return execPlanResult.Message, nil
-	}
-
-	// Clear current plan if execution completed successfully
-	if a.currentPlan.IsComplete() {
-		a.currentPlan = nil
-	}
-
-	// Create summary of the execution results
-	summaryAgent := NewSummaryAgent(WithConfig(a.config))
-	summaryResult, err := summaryAgent.Summarize(ctx, execPlanResult)
-	if err != nil {
-		return "", fmt.Errorf("failed to summarize replan results: %w", err)
-	}
-
-	a.conversationBuffer.ChatHistory.AddAIMessage(ctx, summaryResult.Summary)
-
-	return summaryResult.Summary, nil
 }
 
 // Stop terminates the agent and performs any necessary cleanup

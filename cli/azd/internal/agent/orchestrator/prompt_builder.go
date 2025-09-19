@@ -52,8 +52,8 @@ func WithPromptTools(tools []common.AnnotatedTool) ConversationalPromptOption {
 	}
 }
 
-// WithConversationBuffer adds conversation history to messages
-func WithConversationBuffer(buffer *langchaingo_memory.ConversationBuffer) ConversationalPromptOption {
+// WithConversation adds conversation history to messages
+func WithConversation(buffer *langchaingo_memory.ConversationBuffer) ConversationalPromptOption {
 	return func(cpb *PromptBuilder) {
 		cpb.conversationBuffer = buffer
 		cpb.includeConversation = true
@@ -65,12 +65,16 @@ func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageConte
 
 	messages := []llms.MessageContent{}
 
+	systemPrompt, err := pb.buildSystemMessage(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build system prompt: %w", err)
+	}
+
 	messages = append(messages, llms.MessageContent{
 		Role:  llms.ChatMessageTypeSystem,
-		Parts: []llms.ContentPart{llms.TextPart(pb.systemPrompt)},
+		Parts: []llms.ContentPart{llms.TextPart(systemPrompt)},
 	})
 
-	// 2. Add conversation history if configured
 	if pb.includeConversation && pb.conversationBuffer != nil {
 		conversationMessages, err := pb.buildConversationMessages(ctx)
 		if err != nil {

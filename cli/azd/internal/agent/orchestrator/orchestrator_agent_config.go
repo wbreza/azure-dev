@@ -6,11 +6,12 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	"github.com/tmc/langchaingo/callbacks"
 	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/memory"
 )
 
 type AgentConfig struct {
 	plan             *types.Plan
-	messages         []llms.ChatMessage
+	conversation     *memory.ConversationBuffer
 	tools            []common.AnnotatedTool
 	model            llms.Model
 	maxIterations    int
@@ -28,9 +29,9 @@ func WithConfig(config *AgentConfig) AgentOption {
 	}
 }
 
-func WithMessages(messages []llms.ChatMessage) AgentOption {
+func WithConversationBuffer(conversation *memory.ConversationBuffer) AgentOption {
 	return func(config *AgentConfig) {
-		config.messages = messages
+		config.conversation = conversation
 	}
 }
 
