@@ -5,7 +5,9 @@ package orchestrator
 
 import (
 	"context"
+	"crypto/md5"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	uxlib "github.com/azure/azure-dev/cli/azd/pkg/ux"
 	"github.com/fatih/color"
+	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/schema"
 )
@@ -83,6 +86,15 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 		return "", fmt.Errorf("failed to add user message to conversation: %w", err)
 	}
 
+	if a.currentPlan == nil {
+		a.currentPlan = &types.Plan{
+			Status:    types.PlanPending,
+			Tasks:     []*types.Task{},
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+	}
+
 	// Iterate until plan is complete or we have a message for the user
 	for i := 0; i < a.config.maxIterations; i++ {
 		// Generate response using React pattern
@@ -102,7 +114,7 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 		})
 
 		// Apply plan updates
-		if err := a.applyPlanUpdates(result.PlanUpdates); err != nil {
+		if err := a.applyPlanUpdates(ctx, result.PlanUpdates); err != nil {
 			return "", fmt.Errorf("failed to apply plan updates: %w", err)
 		}
 
@@ -111,7 +123,7 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 			return "", fmt.Errorf("failed to execute actions: %w", err)
 		}
 
-		if a.currentPlan != nil && a.isPlanComplete() {
+		if a.currentPlan.IsComplete() && result.Message != "" {
 			a.currentPlan = nil
 		}
 
@@ -140,13 +152,22 @@ func (a *ReactAgent) Stop() error {
 
 // generateReactResponse calls the LLM to get a React response
 func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPromptResult, error) {
-	// Build the prompt using the prompt builder
-	promptBuilder := NewPromptBuilder(
+	// Build prompt builder options
+	options := []ConversationalPromptOption{
 		WithSystemPrompt(reactPromptTemplate),
 		WithPromptTools(a.config.tools),
-		WithContext("Current Plan", a.currentPlan),
 		WithConversation(a.config.conversation),
-	)
+	}
+
+	// Get tool history for current inprogress task
+	if currentTask := a.currentPlan.GetCurrentTask(); currentTask != nil && len(currentTask.ToolHistory) > 0 {
+		options = append(options, WithContext("Tool History", currentTask.ToolHistory))
+	}
+
+	options = append(options, WithContext("Current Plan", a.currentPlan))
+
+	// Build the prompt using the accumulated options
+	promptBuilder := NewPromptBuilder(options...)
 
 	// Build messages
 	messages, err := promptBuilder.BuildMessages(ctx)
@@ -180,27 +201,23 @@ func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPro
 }
 
 // applyPlanUpdates applies the plan updates from the React response
-func (a *ReactAgent) applyPlanUpdates(planUpdates []*types.PlanUpdates) error {
+func (a *ReactAgent) applyPlanUpdates(ctx context.Context, planUpdates []*types.PlanUpdates) error {
 	for _, update := range planUpdates {
-		// Update goal if provided
 		if update.Goal != "" {
-			if a.currentPlan == nil {
-				a.currentPlan = &types.Plan{
-					Goal:      update.Goal,
-					Tasks:     []*types.Task{},
-					CreatedAt: time.Now(),
-					UpdatedAt: time.Now(),
-				}
-			} else {
-				a.currentPlan.Goal = update.Goal
-				a.currentPlan.UpdatedAt = time.Now()
-			}
+			a.currentPlan.Goal = update.Goal
 		}
+
+		if update.OverallStatus != "" && a.currentPlan.CanTransitionTo(update.OverallStatus) {
+			a.currentPlan.Status = update.OverallStatus
+		}
+
+		a.currentPlan.UpdatedAt = time.Now()
 
 		// Ensure we have a plan to work with
 		if a.currentPlan == nil {
 			a.currentPlan = &types.Plan{
 				Goal:      "",
+				Status:    types.PlanPending,
 				Tasks:     []*types.Task{},
 				CreatedAt: time.Now(),
 				UpdatedAt: time.Now(),
@@ -210,10 +227,11 @@ func (a *ReactAgent) applyPlanUpdates(planUpdates []*types.PlanUpdates) error {
 		// Add new tasks
 		for _, taskUpdate := range update.AddTasks {
 			newTask := &types.Task{
-				ID:           taskUpdate.ID,
+				ID:           generateTaskID(taskUpdate),
 				Description:  taskUpdate.Description,
 				Status:       types.TaskPending,
 				Requirements: taskUpdate.Requirements,
+				Rules:        taskUpdate.Rules,
 				UpdatedAt:    time.Now(),
 				CreatedAt:    time.Now(),
 			}
@@ -224,14 +242,37 @@ func (a *ReactAgent) applyPlanUpdates(planUpdates []*types.PlanUpdates) error {
 		for _, taskUpdate := range update.ModifyTasks {
 			for _, task := range a.currentPlan.Tasks {
 				if task.ID == taskUpdate.ID {
+					if task.IsTerminal() {
+						continue
+					}
 					if taskUpdate.Description != "" {
 						task.Description = taskUpdate.Description
 					}
 					if taskUpdate.Status != "" {
-						task.Status = taskUpdate.Status
+						// Special handling for InProgress status - ensure only one task can be in progress
+						if taskUpdate.Status == types.TaskInProgress {
+							// Check if there's already a task in progress
+							currentInProgress := a.currentPlan.GetCurrentTask()
+							if currentInProgress != nil && currentInProgress.ID != task.ID {
+								// Silently ignore - only one task can be in progress at a time
+								continue
+							}
+						}
+
+						// Validate status transition before applying
+						if task.CanTransitionTo(taskUpdate.Status) {
+							task.Status = taskUpdate.Status
+						}
+						// Silently ignore invalid status transitions
+					}
+					if len(taskUpdate.Evidence) > 0 {
+						task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
 					}
 					if len(taskUpdate.Requirements) > 0 {
-						task.Requirements = taskUpdate.Requirements
+						task.Requirements = appendDistinct(task.Requirements, taskUpdate.Requirements)
+					}
+					if len(taskUpdate.Rules) > 0 {
+						task.Rules = appendDistinct(task.Rules, taskUpdate.Rules)
 					}
 					break
 				}
@@ -242,6 +283,21 @@ func (a *ReactAgent) applyPlanUpdates(planUpdates []*types.PlanUpdates) error {
 		for _, taskUpdate := range update.CompleteTasks {
 			for _, task := range a.currentPlan.Tasks {
 				if task.ID == taskUpdate.ID {
+					if task.Status != types.TaskInProgress {
+						continue
+					}
+
+					if len(taskUpdate.Evidence) > 0 {
+						task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
+					}
+
+					// Summarize tool history before marking complete
+					if len(task.ToolHistory) > 0 {
+						if err := a.summarizeCompletedTask(ctx, task); err != nil {
+							return fmt.Errorf("failed to summarize completed task %s: %w", task.ID, err)
+						}
+					}
+
 					task.Status = types.TaskComplete
 					break
 				}
@@ -256,6 +312,9 @@ func (a *ReactAgent) applyPlanUpdates(planUpdates []*types.PlanUpdates) error {
 
 // executeActions executes the actions from the React response
 func (a *ReactAgent) executeActions(ctx context.Context, actions []*types.Action) error {
+	// Find the current inprogress task to store tool history
+	currentTask := a.currentPlan.GetCurrentTask()
+
 	for _, action := range actions {
 		// If the input is not already a string, then attempt to marshall it using JSON
 		inputValue, ok := action.Input.(string)
@@ -284,36 +343,37 @@ func (a *ReactAgent) executeActions(ctx context.Context, actions []*types.Action
 		a.config.callbacksHandler.HandleToolStart(ctx, inputValue)
 
 		toolOutput, err := tool.Call(ctx, inputValue)
+
+		// Create tool execution record
+		toolExecution := &types.ToolExecution{
+			Tool:      action.Tool,
+			Input:     inputValue,
+			Output:    toolOutput,
+			Timestamp: time.Now(),
+			Success:   err == nil,
+		}
+
 		if err != nil {
+			toolExecution.Error = err.Error()
 			a.config.callbacksHandler.HandleToolError(ctx, err)
+
+			// Still store failed tool calls for context
+			if currentTask != nil {
+				currentTask.ToolHistory = append(currentTask.ToolHistory, toolExecution)
+			}
+
 			return fmt.Errorf("tool execution failed for %s: %w", action.Tool, err)
 		}
 
 		a.config.callbacksHandler.HandleToolEnd(ctx, toolOutput)
 
-		// Add tool result to conversation history
-		toolMessage := fmt.Sprintf("Tool: %s\nInput: %v\nResult: %s", action.Tool, action.Input, toolOutput)
-		if err := a.config.conversation.ChatHistory.AddAIMessage(ctx, toolMessage); err != nil {
-			return fmt.Errorf("failed to add tool result to conversation: %w", err)
+		// Store tool execution in current task instead of conversation history
+		if currentTask != nil {
+			currentTask.ToolHistory = append(currentTask.ToolHistory, toolExecution)
 		}
 	}
 
 	return nil
-}
-
-// isPlanComplete checks if all tasks in the plan are complete or obsolete
-func (a *ReactAgent) isPlanComplete() bool {
-	if a.currentPlan == nil || len(a.currentPlan.Tasks) == 0 {
-		return false
-	}
-
-	for _, task := range a.currentPlan.Tasks {
-		if task.Status != types.TaskComplete && task.Status != types.TaskObsolete {
-			return false
-		}
-	}
-
-	return true
 }
 
 func (a *ReactAgent) renderThoughts(ctx context.Context) (func(), error) {
@@ -384,4 +444,97 @@ func (a *ReactAgent) renderThoughts(ctx context.Context) (func(), error) {
 	}
 
 	return cleanup, canvas.Run()
+}
+
+// appendDistinct appends new items to existing slice and removes duplicates
+func appendDistinct(existing []string, newItems []string) []string {
+	// Create a map to track existing items
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(existing)+len(newItems))
+
+	// Add existing items
+	for _, item := range existing {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+
+	// Add new items if not already present
+	for _, item := range newItems {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+// summarizeCompletedTask creates a summary of the task's tool history and adds it to conversation
+func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Task) error {
+	// Filter for successful tool executions only
+	var successfulExecutions []*types.ToolExecution
+	for _, execution := range task.ToolHistory {
+		if execution.Success {
+			successfulExecutions = append(successfulExecutions, execution)
+		}
+	}
+
+	// Skip summarization if no successful executions
+	if len(successfulExecutions) == 0 {
+		return nil
+	}
+
+	// Create summarization prompt
+	prompt := fmt.Sprintf("Task: %s\n\nSummarize the key findings and outcomes from these tool executions:\n\n", task.Description)
+
+	for i, execution := range successfulExecutions {
+		prompt += fmt.Sprintf("%d. Tool: %s\n", i+1, execution.Tool)
+		if execution.Input != "" {
+			prompt += fmt.Sprintf("   Input: %s\n", execution.Input)
+		}
+		prompt += fmt.Sprintf("   Output: %s\n\n", execution.Output)
+	}
+
+	prompt += "Provide a concise summary of key insights, discoveries, and outcomes:"
+
+	// Make fresh LLM call for summarization
+	messages := []llms.MessageContent{
+		{
+			Role:  llms.ChatMessageTypeHuman,
+			Parts: []llms.ContentPart{llms.TextPart(prompt)},
+		},
+	}
+
+	response, err := a.config.model.GenerateContent(ctx, messages)
+	if err != nil {
+		return fmt.Errorf("failed to generate task summary: %w", err)
+	}
+
+	// Extract summary text
+	var summary string
+	if len(response.Choices) > 0 {
+		summary = response.Choices[0].Content
+	}
+
+	if summary == "" {
+		return fmt.Errorf("empty summary returned from LLM")
+	}
+
+	// Add summary to conversation history
+	taskSummaryMessage := fmt.Sprintf("Task '%s' completed. Summary: %s", task.Description, summary)
+	if err := a.config.conversation.ChatHistory.AddAIMessage(ctx, taskSummaryMessage); err != nil {
+		return fmt.Errorf("failed to add task summary to conversation: %w", err)
+	}
+
+	return nil
+}
+
+// generateTaskID creates a unique task identifier based on the description hash
+func generateTaskID(task *types.TaskUpdate) string {
+	hasher := md5.New()
+	hasher.Write([]byte(task.Description))
+	hash := hex.EncodeToString(hasher.Sum(nil))[:8]
+	return fmt.Sprintf("task_%s", hash)
 }

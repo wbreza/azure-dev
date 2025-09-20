@@ -83,7 +83,8 @@ func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageConte
 
 	messages := []llms.MessageContent{}
 
-	systemPrompt, err := pb.buildSystemMessage(ctx)
+	// 1. Base system prompt (without contexts)
+	systemPrompt, err := pb.buildBaseSystemMessage(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build system prompt: %w", err)
 	}
@@ -93,6 +94,7 @@ func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageConte
 		Parts: []llms.ContentPart{llms.TextPart(systemPrompt)},
 	})
 
+	// 2. Conversation history
 	if pb.includeConversation && pb.conversationBuffer != nil {
 		conversationMessages, err := pb.buildConversationMessages(ctx)
 		if err != nil {
@@ -101,10 +103,71 @@ func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageConte
 		messages = append(messages, conversationMessages...)
 	}
 
+	// 3. Additional context as AI messages
+	contextMessages, err := pb.buildContextMessages(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build context messages: %w", err)
+	}
+	messages = append(messages, contextMessages...)
+
 	return messages, nil
 }
 
-// buildSystemMessage creates the system message with optional working memory context
+// buildBaseSystemMessage creates the system message with just the base prompt and tools (no contexts)
+func (pb *PromptBuilder) buildBaseSystemMessage(ctx context.Context) (string, error) {
+
+	var systemParts []string
+
+	// 1. Base system prompt (personality/role)
+	if pb.systemPrompt != "" {
+		systemParts = append(systemParts, pb.systemPrompt)
+	}
+
+	// 2. Tools section
+	if len(pb.tools) > 0 {
+		toolDescriptions := pb.formatToolsSection()
+		if toolDescriptions != "" {
+			systemParts = append(systemParts, toolDescriptions)
+		}
+	}
+
+	return strings.Join(systemParts, "\n\n"), nil
+}
+
+// buildContextMessages creates AI messages for each context item
+func (pb *PromptBuilder) buildContextMessages(ctx context.Context) ([]llms.MessageContent, error) {
+	if len(pb.contexts) == 0 {
+		return []llms.MessageContent{}, nil
+	}
+
+	var messages []llms.MessageContent
+
+	for _, context := range pb.contexts {
+		// Skip nil objects
+		if context.Object == nil {
+			continue
+		}
+
+		// Marshal object to indented JSON
+		contextJSON, err := json.MarshalIndent(context.Object, "", "  ")
+		if err != nil {
+			// Skip sections with marshal errors
+			continue
+		}
+
+		// Create AI message for this context
+		contextContent := fmt.Sprintf("## %s\n```json\n%s\n```", context.Label, string(contextJSON))
+
+		messages = append(messages, llms.MessageContent{
+			Role:  llms.ChatMessageTypeAI,
+			Parts: []llms.ContentPart{llms.TextPart(contextContent)},
+		})
+	}
+
+	return messages, nil
+}
+
+// buildSystemMessage creates the system message with optional working memory context (DEPRECATED - keeping for compatibility)
 func (pb *PromptBuilder) buildSystemMessage(ctx context.Context) (string, error) {
 
 	var systemParts []string
