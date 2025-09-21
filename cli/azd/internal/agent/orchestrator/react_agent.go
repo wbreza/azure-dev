@@ -17,7 +17,6 @@ import (
 	"github.com/azure/azure-dev/cli/azd/internal/agent/types"
 	uxlib "github.com/azure/azure-dev/cli/azd/pkg/ux"
 	"github.com/fatih/color"
-	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/memory"
 	"github.com/tmc/langchaingo/schema"
 )
@@ -97,6 +96,9 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 
 	// Iterate until plan is complete or we have a message for the user
 	for i := 0; i < a.config.maxIterations; i++ {
+		// Auto-advance to next pending task if no task is currently in progress
+		a.autoStartNextPendingTask()
+
 		// Generate response using React pattern
 		result, err := a.generateReactResponse(ctx)
 		if err != nil {
@@ -105,7 +107,6 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 				err.Error(),
 			)
 			a.config.conversation.ChatHistory.AddAIMessage(ctx, feedback)
-			continue
 		}
 
 		a.config.callbacksHandler.HandleChainEnd(ctx, map[string]any{
@@ -118,12 +119,20 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 			return "", fmt.Errorf("failed to apply plan updates: %w", err)
 		}
 
+		// Auto-advance to next pending task if no task is currently in progress
+		// This can happen when the LLM creates its initial tasks and starts actions in the same turn
+		a.autoStartNextPendingTask()
+
 		// Execute actions
 		if err := a.executeActions(ctx, result.Actions); err != nil {
 			return "", fmt.Errorf("failed to execute actions: %w", err)
 		}
 
 		if a.currentPlan.IsComplete() && result.Message != "" {
+			// Summarize the completed plan before clearing it
+			if err := a.summarizeCompletedPlan(ctx, a.currentPlan); err != nil {
+				return "", fmt.Errorf("failed to summarize completed plan: %w", err)
+			}
 			a.currentPlan = nil
 		}
 
@@ -178,7 +187,10 @@ func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPro
 	// Call LLM
 	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate LLM response: %w", err)
+		return &types.ReactPromptResult{
+				Message: err.Error(),
+			},
+			fmt.Errorf("failed to generate LLM response: %w", err)
 	}
 
 	// Extract response text
@@ -194,7 +206,10 @@ func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPro
 	// Parse JSON response (handles markdown code blocks)
 	var result types.ReactPromptResult
 	if err := unmarshalJSONResponse(responseText, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse LLM response as JSON: %w", err)
+		return &types.ReactPromptResult{
+				Message: responseText,
+			},
+			fmt.Errorf("failed to parse LLM response as JSON: %w", err)
 	}
 
 	return &result, nil
@@ -473,40 +488,20 @@ func appendDistinct(existing []string, newItems []string) []string {
 
 // summarizeCompletedTask creates a summary of the task's tool history and adds it to conversation
 func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Task) error {
-	// Filter for successful tool executions only
-	var successfulExecutions []*types.ToolExecution
-	for _, execution := range task.ToolHistory {
-		if execution.Success {
-			successfulExecutions = append(successfulExecutions, execution)
-		}
+	// Use prompt builder with task context for summarization
+	promptBuilder := NewPromptBuilder(
+		WithSystemPrompt("Provide a concise summary of key insights, discoveries, and outcomes from this completed task."),
+		WithContext("Completed Task", task),
+		WithContext("Tool History", task.ToolHistory),
+	)
+
+	// Build messages
+	messages, err := promptBuilder.BuildMessages(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to build summarization messages: %w", err)
 	}
 
-	// Skip summarization if no successful executions
-	if len(successfulExecutions) == 0 {
-		return nil
-	}
-
-	// Create summarization prompt
-	prompt := fmt.Sprintf("Task: %s\n\nSummarize the key findings and outcomes from these tool executions:\n\n", task.Description)
-
-	for i, execution := range successfulExecutions {
-		prompt += fmt.Sprintf("%d. Tool: %s\n", i+1, execution.Tool)
-		if execution.Input != "" {
-			prompt += fmt.Sprintf("   Input: %s\n", execution.Input)
-		}
-		prompt += fmt.Sprintf("   Output: %s\n\n", execution.Output)
-	}
-
-	prompt += "Provide a concise summary of key insights, discoveries, and outcomes:"
-
-	// Make fresh LLM call for summarization
-	messages := []llms.MessageContent{
-		{
-			Role:  llms.ChatMessageTypeHuman,
-			Parts: []llms.ContentPart{llms.TextPart(prompt)},
-		},
-	}
-
+	// Make LLM call for summarization
 	response, err := a.config.model.GenerateContent(ctx, messages)
 	if err != nil {
 		return fmt.Errorf("failed to generate task summary: %w", err)
@@ -519,7 +514,7 @@ func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Tas
 	}
 
 	if summary == "" {
-		return fmt.Errorf("empty summary returned from LLM")
+		return fmt.Errorf("empty task summary returned from LLM")
 	}
 
 	// Add summary to conversation history
@@ -531,10 +526,71 @@ func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Tas
 	return nil
 }
 
+// summarizeCompletedPlan creates a summary of the entire plan and adds it to conversation history
+func (a *ReactAgent) summarizeCompletedPlan(ctx context.Context, plan *types.Plan) error {
+	// Use prompt builder with plan context for summarization
+	promptBuilder := NewPromptBuilder(
+		WithSystemPrompt("Provide a comprehensive summary of this completed plan, highlighting what was accomplished, key deliverables created, and overall success."),
+		WithContext("Completed Plan", plan),
+	)
+
+	// Build messages
+	messages, err := promptBuilder.BuildMessages(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to build summarization messages: %w", err)
+	}
+
+	// Make LLM call for summarization
+	response, err := a.config.model.GenerateContent(ctx, messages)
+	if err != nil {
+		return fmt.Errorf("failed to generate plan summary: %w", err)
+	}
+
+	// Extract summary text
+	var summary string
+	if len(response.Choices) > 0 {
+		summary = response.Choices[0].Content
+	}
+
+	if summary == "" {
+		return fmt.Errorf("empty plan summary returned from LLM")
+	}
+
+	// Add summary to conversation history
+	planSummaryMessage := fmt.Sprintf("Plan '%s' completed successfully. \nSummary: %s\n", plan.Goal, summary)
+	if err := a.config.conversation.ChatHistory.AddAIMessage(ctx, planSummaryMessage); err != nil {
+		return fmt.Errorf("failed to add plan summary to conversation: %w", err)
+	}
+
+	return nil
+}
+
 // generateTaskID creates a unique task identifier based on the description hash
 func generateTaskID(task *types.TaskUpdate) string {
 	hasher := md5.New()
 	hasher.Write([]byte(task.Description))
 	hash := hex.EncodeToString(hasher.Sum(nil))[:8]
 	return fmt.Sprintf("task_%s", hash)
+}
+
+// autoStartNextPendingTask automatically sets the first pending task to inprogress
+// if there is no current task in progress
+func (a *ReactAgent) autoStartNextPendingTask() {
+	if a.currentPlan == nil {
+		return
+	}
+
+	// Check if there's already a task in progress
+	if a.currentPlan.GetCurrentTask() != nil {
+		return
+	}
+
+	// Find the first pending task and set it to inprogress
+	for _, task := range a.currentPlan.Tasks {
+		if task.Status == types.TaskPending {
+			task.Status = types.TaskInProgress
+			task.UpdatedAt = time.Now()
+			return
+		}
+	}
 }

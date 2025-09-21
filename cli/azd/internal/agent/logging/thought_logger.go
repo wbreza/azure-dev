@@ -75,9 +75,9 @@ func (al *ThoughtLogger) HandleChainStart(ctx context.Context, inputs map[string
 
 // HandleChainEnd is called when chain execution ends
 func (al *ThoughtLogger) HandleChainEnd(ctx context.Context, outputs map[string]any) {
-	if summary, ok := outputs["observation"].(string); ok {
+	if reasoning, ok := outputs["reasoning"].(string); ok {
 		al.ThoughtChan <- Thought{
-			Thought: summary,
+			Thought: reasoning,
 		}
 	}
 }
