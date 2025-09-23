@@ -1,7 +1,12 @@
 package types
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
 	"time"
+
+	"github.com/tmc/langchaingo/memory"
 )
 
 type PlanStatus string
@@ -139,7 +144,29 @@ type Task struct {
 	UpdatedAt    time.Time  `json:"updatedAt"`
 
 	// Tool execution history for this task (omitted from JSON serialization)
-	ToolHistory []*ToolExecution `json:"-"`
+	ToolHistory *memory.ChatMessageHistory `json:"-"`
+}
+
+// hashString creates a unique task identifier based on the description hash
+func hashString(value string) string {
+	hasher := md5.New()
+	hasher.Write([]byte(value))
+	hash := hex.EncodeToString(hasher.Sum(nil))[:8]
+	return fmt.Sprintf("task_%s", hash)
+}
+
+func NewTask(description string) *Task {
+	return &Task{
+		ID:           hashString(description),
+		Description:  description,
+		Evidence:     []string{},
+		Requirements: []string{},
+		Rules:        []string{},
+		Status:       TaskPending,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+		ToolHistory:  memory.NewChatMessageHistory(),
+	}
 }
 
 func (t *Task) IsTerminal() bool {

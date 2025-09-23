@@ -11,8 +11,10 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/internal/agent/tools/common"
 	"github.com/tmc/langchaingo/llms"
-	langchaingo_memory "github.com/tmc/langchaingo/memory"
+	"github.com/tmc/langchaingo/schema"
 )
+
+type promptFormatterFunc func() ([]llms.ChatMessage, error)
 
 // ContextItem represents a labeled context object for the system prompt
 type ContextItem struct {
@@ -22,66 +24,66 @@ type ContextItem struct {
 
 // PromptBuilder composes multi-message prompts for conversation-aware agents
 type PromptBuilder struct {
-	systemPrompt        string
-	tools               []common.AnnotatedTool
-	contexts            []ContextItem
-	conversationBuffer  *langchaingo_memory.ConversationBuffer
-	includeConversation bool
+	systemParts []string
+	formatters  []promptFormatterFunc
 }
 
-// ConversationalPromptOption configures the prompt builder
-type ConversationalPromptOption func(*PromptBuilder)
-
 // NewPromptBuilder creates a new builder with options
-func NewPromptBuilder(opts ...ConversationalPromptOption) *PromptBuilder {
-	builder := &PromptBuilder{
-		systemPrompt:        "You are a helpful AI assistant.",
-		includeConversation: false,
+func NewPromptBuilder() *PromptBuilder {
+	return &PromptBuilder{
+		systemParts: []string{},
+		formatters:  []promptFormatterFunc{},
 	}
-
-	for _, opt := range opts {
-		opt(builder)
-	}
-
-	return builder
 }
 
 // WithSystemPrompt sets the system prompt text
-func WithSystemPrompt(prompt string) ConversationalPromptOption {
-	return func(cpb *PromptBuilder) {
-		cpb.systemPrompt = prompt
-	}
+func (pb *PromptBuilder) WithSystemPrompt(prompt string) *PromptBuilder {
+	pb.systemParts = append(pb.systemParts, prompt)
+	return pb
 }
 
 // WithPromptTools adds tools to the system prompt
-func WithPromptTools(tools []common.AnnotatedTool) ConversationalPromptOption {
-	return func(cpb *PromptBuilder) {
-		cpb.tools = tools
+func (pb *PromptBuilder) WithPromptTools(tools []common.AnnotatedTool) *PromptBuilder {
+	if len(tools) > 0 {
+		toolDescriptions := pb.formatToolsSection(tools)
+		if toolDescriptions != "" {
+			pb.systemParts = append(pb.systemParts, toolDescriptions)
+		}
 	}
+	return pb
 }
 
 // WithContext adds a labeled context object to the system prompt
-func WithContext(label string, object any) ConversationalPromptOption {
-	return func(cpb *PromptBuilder) {
-		cpb.contexts = append(cpb.contexts, ContextItem{
-			Label:  label,
-			Object: object,
-		})
+func (pb *PromptBuilder) WithContext(label string, object any) *PromptBuilder {
+	contextItem := ContextItem{
+		Label:  label,
+		Object: object,
 	}
+
+	pb.formatters = append(pb.formatters, func() ([]llms.ChatMessage, error) {
+		return pb.buildContextMessage(contextItem)
+	})
+
+	return pb
 }
 
 // WithConversation adds conversation history to messages
-func WithConversation(buffer *langchaingo_memory.ConversationBuffer) ConversationalPromptOption {
-	return func(cpb *PromptBuilder) {
-		cpb.conversationBuffer = buffer
-		cpb.includeConversation = true
-	}
+func (pb *PromptBuilder) WithConversation(ctx context.Context, chatHistory schema.ChatMessageHistory) *PromptBuilder {
+	pb.formatters = append(pb.formatters, func() ([]llms.ChatMessage, error) {
+		messages, err := chatHistory.Messages(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		return messages, nil
+	})
+
+	return pb
 }
 
 // BuildMessages constructs the complete message slice for LLM calls
-func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageContent, error) {
-
-	messages := []llms.MessageContent{}
+func (pb *PromptBuilder) Build(ctx context.Context) ([]llms.MessageContent, error) {
+	chatMessages := []llms.ChatMessage{}
 
 	// 1. Base system prompt (without contexts)
 	systemPrompt, err := pb.buildBaseSystemMessage(ctx)
@@ -89,114 +91,54 @@ func (pb *PromptBuilder) BuildMessages(ctx context.Context) ([]llms.MessageConte
 		return nil, fmt.Errorf("failed to build system prompt: %w", err)
 	}
 
-	messages = append(messages, llms.MessageContent{
-		Role:  llms.ChatMessageTypeSystem,
-		Parts: []llms.ContentPart{llms.TextPart(systemPrompt)},
-	})
+	chatMessages = append(chatMessages, systemPrompt)
 
-	// 2. Conversation history
-	if pb.includeConversation && pb.conversationBuffer != nil {
-		conversationMessages, err := pb.buildConversationMessages(ctx)
+	// 2. Other sections in order
+	for _, formatter := range pb.formatters {
+		messages, err := formatter()
 		if err != nil {
-			return nil, fmt.Errorf("failed to build conversation messages: %w", err)
+			return nil, fmt.Errorf("failed to build prompt section: %w", err)
 		}
-		messages = append(messages, conversationMessages...)
+
+		chatMessages = append(chatMessages, messages...)
 	}
 
-	// 3. Additional context as AI messages
-	contextMessages, err := pb.buildContextMessages(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build context messages: %w", err)
+	allMessage := make([]llms.MessageContent, len(chatMessages))
+	for i, msg := range chatMessages {
+		allMessage[i] = llms.MessageContent{
+			Role:  msg.GetType(),
+			Parts: []llms.ContentPart{llms.TextPart(msg.GetContent())},
+		}
 	}
-	messages = append(messages, contextMessages...)
 
-	return messages, nil
+	return allMessage, nil
 }
 
 // buildBaseSystemMessage creates the system message with just the base prompt and tools (no contexts)
-func (pb *PromptBuilder) buildBaseSystemMessage(ctx context.Context) (string, error) {
-
-	var systemParts []string
-
-	// 1. Base system prompt (personality/role)
-	if pb.systemPrompt != "" {
-		systemParts = append(systemParts, pb.systemPrompt)
-	}
-
-	// 2. Tools section
-	if len(pb.tools) > 0 {
-		toolDescriptions := pb.formatToolsSection()
-		if toolDescriptions != "" {
-			systemParts = append(systemParts, toolDescriptions)
-		}
-	}
-
-	return strings.Join(systemParts, "\n\n"), nil
+func (pb *PromptBuilder) buildBaseSystemMessage(ctx context.Context) (llms.ChatMessage, error) {
+	return llms.SystemChatMessage{
+		Content: strings.Join(pb.systemParts, "\n\n"),
+	}, nil
 }
 
-// buildContextMessages creates AI messages for each context item
-func (pb *PromptBuilder) buildContextMessages(ctx context.Context) ([]llms.MessageContent, error) {
-	if len(pb.contexts) == 0 {
-		return []llms.MessageContent{}, nil
+// buildContextMessage creates AI messages for each context item
+func (pb *PromptBuilder) buildContextMessage(item ContextItem) ([]llms.ChatMessage, error) {
+	// Marshal object to indented JSON
+	contextJSON, err := json.MarshalIndent(item, "", "  ")
+	if err != nil {
+		return nil, err
 	}
 
-	var messages []llms.MessageContent
-
-	for _, context := range pb.contexts {
-		// Skip nil objects
-		if context.Object == nil {
-			continue
-		}
-
-		// Marshal object to indented JSON
-		contextJSON, err := json.MarshalIndent(context.Object, "", "  ")
-		if err != nil {
-			// Skip sections with marshal errors
-			continue
-		}
-
-		// Create AI message for this context
-		contextContent := fmt.Sprintf("## %s\n```json\n%s\n```", context.Label, string(contextJSON))
-
-		messages = append(messages, llms.MessageContent{
-			Role:  llms.ChatMessageTypeAI,
-			Parts: []llms.ContentPart{llms.TextPart(contextContent)},
-		})
-	}
-
-	return messages, nil
-}
-
-// buildSystemMessage creates the system message with optional working memory context (DEPRECATED - keeping for compatibility)
-func (pb *PromptBuilder) buildSystemMessage(ctx context.Context) (string, error) {
-
-	var systemParts []string
-
-	// 1. Base system prompt (personality/role)
-	if pb.systemPrompt != "" {
-		systemParts = append(systemParts, pb.systemPrompt)
-	}
-
-	// 2. Tools section
-	if len(pb.tools) > 0 {
-		toolDescriptions := pb.formatToolsSection()
-		if toolDescriptions != "" {
-			systemParts = append(systemParts, toolDescriptions)
-		}
-	}
-
-	// 3. Contexts section
-	contextsSection := pb.formatContextsSection()
-	if contextsSection != "" {
-		systemParts = append(systemParts, contextsSection)
-	}
-
-	return strings.Join(systemParts, "\n\n"), nil
+	return []llms.ChatMessage{
+		llms.AIChatMessage{
+			Content: fmt.Sprintf("## %s\n```json\n%s\n```", item.Label, string(contextJSON)),
+		},
+	}, nil
 }
 
 // formatToolsSection creates a formatted tools description section
-func (pb *PromptBuilder) formatToolsSection() string {
-	if len(pb.tools) == 0 {
+func (pb *PromptBuilder) formatToolsSection(tools []common.AnnotatedTool) string {
+	if len(tools) == 0 {
 		return ""
 	}
 
@@ -204,78 +146,10 @@ func (pb *PromptBuilder) formatToolsSection() string {
 	toolParts = append(toolParts, "## Available Tools")
 	toolParts = append(toolParts, "You have access to the following tools:")
 
-	for _, tool := range pb.tools {
+	for _, tool := range tools {
 		toolDesc := fmt.Sprintf("- **%s**: %s", tool.Name(), tool.Description())
 		toolParts = append(toolParts, toolDesc)
 	}
 
 	return strings.Join(toolParts, "\n")
-}
-
-// formatContextsSection creates formatted context sections with JSON
-func (pb *PromptBuilder) formatContextsSection() string {
-	if len(pb.contexts) == 0 {
-		return ""
-	}
-
-	var contextParts []string
-
-	for _, context := range pb.contexts {
-		// Skip nil objects
-		if context.Object == nil {
-			continue
-		}
-
-		// Add section header
-		contextParts = append(contextParts, fmt.Sprintf("## %s", context.Label))
-
-		// Marshal object to indented JSON
-		contextJSON, err := json.MarshalIndent(context.Object, "", "  ")
-		if err != nil {
-			// Skip sections with marshal errors as requested
-			continue
-		}
-
-		contextParts = append(contextParts, "```json")
-		contextParts = append(contextParts, string(contextJSON))
-		contextParts = append(contextParts, "```")
-		contextParts = append(contextParts, "") // Add spacing between contexts
-	}
-
-	// Remove trailing empty line if present
-	if len(contextParts) > 0 && contextParts[len(contextParts)-1] == "" {
-		contextParts = contextParts[:len(contextParts)-1]
-	}
-
-	return strings.Join(contextParts, "\n")
-}
-
-// buildConversationMessages converts conversation buffer to message format
-func (pb *PromptBuilder) buildConversationMessages(ctx context.Context) ([]llms.MessageContent, error) {
-	if pb.conversationBuffer == nil {
-		return []llms.MessageContent{}, nil
-	}
-
-	// Get conversation history from buffer
-	conversationHistory, err := pb.conversationBuffer.ChatHistory.Messages(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get conversation history: %w", err)
-	}
-
-	messages := []llms.MessageContent{}
-
-	// Convert each message in the conversation history
-	for _, msg := range conversationHistory {
-		role := msg.GetType()
-		content := msg.GetContent()
-
-		if content != "" {
-			messages = append(messages, llms.MessageContent{
-				Role:  role,
-				Parts: []llms.ContentPart{llms.TextPart(content)},
-			})
-		}
-	}
-
-	return messages, nil
 }

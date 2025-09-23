@@ -5,9 +5,7 @@ package orchestrator
 
 import (
 	"context"
-	"crypto/md5"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -169,31 +167,22 @@ func (a *ReactAgent) Stop() error {
 // generateReactResponse calls the LLM to get a React response
 func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPromptResult, error) {
 	// Build prompt builder options
-	options := []ConversationalPromptOption{
-		WithSystemPrompt(reactPromptTemplate),
-		WithPromptTools(a.config.tools),
-		WithConversation(a.config.conversation),
-	}
+	promptBuilder := NewPromptBuilder().
+		WithSystemPrompt(reactPromptTemplate).
+		WithPromptTools(a.config.tools).
+		WithContext("Overall Plan Context", a.currentPlan).
+		WithConversation(ctx, a.config.conversation.ChatHistory)
 
 	// Load current tool history and current task into context
 	currentTask := a.currentPlan.GetCurrentTask()
 	if currentTask != nil {
-		options = append(options, WithContext("Tool History", currentTask.ToolHistory))
-		options = append(options, WithContext("Current Task", currentTask))
+		promptBuilder = promptBuilder.
+			WithConversation(ctx, currentTask.ToolHistory).
+			WithContext("Current Task", currentTask)
 	}
-
-	// Get tool history for current inprogress task
-	if currentTask := a.currentPlan.GetCurrentTask(); currentTask != nil && len(currentTask.ToolHistory) > 0 {
-		options = append(options, WithContext("Tool History", currentTask.ToolHistory))
-	}
-
-	options = append(options, WithContext("Plan Context", a.currentPlan))
-
-	// Build the prompt using the accumulated options
-	promptBuilder := NewPromptBuilder(options...)
 
 	// Build messages
-	messages, err := promptBuilder.BuildMessages(ctx)
+	messages, err := promptBuilder.Build(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build messages: %w", err)
 	}
@@ -238,15 +227,9 @@ func (a *ReactAgent) applyPlanUpdates(ctx context.Context, planUpdates []*types.
 
 		// Add new tasks
 		for _, taskUpdate := range update.AddTasks {
-			newTask := &types.Task{
-				ID:           generateTaskID(taskUpdate),
-				Description:  taskUpdate.Description,
-				Status:       types.TaskPending,
-				Requirements: taskUpdate.Requirements,
-				Rules:        taskUpdate.Rules,
-				UpdatedAt:    time.Now(),
-				CreatedAt:    time.Now(),
-			}
+			newTask := types.NewTask(taskUpdate.Description)
+			newTask.Requirements = append(newTask.Requirements, taskUpdate.Requirements...)
+			newTask.Rules = append(newTask.Rules, taskUpdate.Rules...)
 			a.currentPlan.Tasks = append(a.currentPlan.Tasks, newTask)
 		}
 
@@ -298,10 +281,8 @@ func (a *ReactAgent) applyPlanUpdates(ctx context.Context, planUpdates []*types.
 				}
 
 				// Summarize tool history before marking complete
-				if len(task.ToolHistory) > 0 {
-					if err := a.summarizeCompletedTask(ctx, task); err != nil {
-						return fmt.Errorf("failed to summarize completed task %s: %w", task.ID, err)
-					}
+				if err := a.summarizeCompletedTask(ctx, task); err != nil {
+					return fmt.Errorf("failed to summarize completed task %s: %w", task.ID, err)
 				}
 
 				task.Status = types.TaskComplete
@@ -357,6 +338,7 @@ func (a *ReactAgent) executeActions(ctx context.Context, actions []*types.Action
 
 		// Execute the tool
 		a.config.callbacksHandler.HandleToolStart(ctx, inputValue)
+		currentTask.ToolHistory.AddAIMessage(ctx, fmt.Sprintf("Calling tool %s with input:\n%s", action.Tool, inputValue))
 
 		toolOutput, err := tool.Call(ctx, inputValue)
 
@@ -372,21 +354,13 @@ func (a *ReactAgent) executeActions(ctx context.Context, actions []*types.Action
 		if err != nil {
 			toolExecution.Error = err.Error()
 			a.config.callbacksHandler.HandleToolError(ctx, err)
-
-			// Still store failed tool calls for context
-			if currentTask != nil {
-				currentTask.ToolHistory = append(currentTask.ToolHistory, toolExecution)
-			}
+			currentTask.ToolHistory.AddAIMessage(ctx, fmt.Sprintf("Tool %s failed with error:\n%s", action.Tool, err.Error()))
 
 			return fmt.Errorf("tool execution failed for %s: %w", action.Tool, err)
 		}
 
 		a.config.callbacksHandler.HandleToolEnd(ctx, toolOutput)
-
-		// Store tool execution in current task instead of conversation history
-		if currentTask != nil {
-			currentTask.ToolHistory = append(currentTask.ToolHistory, toolExecution)
-		}
+		currentTask.ToolHistory.AddAIMessage(ctx, fmt.Sprintf("Tool %s returned output:\n%s", action.Tool, toolOutput))
 	}
 
 	return nil
@@ -490,14 +464,13 @@ func appendDistinct(existing []string, newItems []string) []string {
 // summarizeCompletedTask creates a summary of the task's tool history and adds it to conversation
 func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Task) error {
 	// Use prompt builder with task context for summarization
-	promptBuilder := NewPromptBuilder(
-		WithSystemPrompt("Provide a concise summary of key insights, discoveries, and outcomes from this completed task."),
-		WithContext("Completed Task", task),
-		WithContext("Tool History", task.ToolHistory),
-	)
+	promptBuilder := NewPromptBuilder().
+		WithSystemPrompt("Provide a concise summary of key insights, discoveries, and outcomes from this completed task.").
+		WithConversation(ctx, task.ToolHistory).
+		WithContext("Completed Task", task)
 
 	// Build messages
-	messages, err := promptBuilder.BuildMessages(ctx)
+	messages, err := promptBuilder.Build(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to build summarization messages: %w", err)
 	}
@@ -530,13 +503,12 @@ func (a *ReactAgent) summarizeCompletedTask(ctx context.Context, task *types.Tas
 // summarizeCompletedPlan creates a summary of the entire plan and adds it to conversation history
 func (a *ReactAgent) summarizeCompletedPlan(ctx context.Context, plan *types.Plan) error {
 	// Use prompt builder with plan context for summarization
-	promptBuilder := NewPromptBuilder(
-		WithSystemPrompt("Provide a comprehensive summary of this completed plan, highlighting what was accomplished, key deliverables created, and overall success."),
-		WithContext("Completed Plan", plan),
-	)
+	promptBuilder := NewPromptBuilder().
+		WithSystemPrompt("Provide a comprehensive summary of this completed plan, highlighting what was accomplished, key deliverables created, and overall success.").
+		WithContext("Completed Plan", plan)
 
 	// Build messages
-	messages, err := promptBuilder.BuildMessages(ctx)
+	messages, err := promptBuilder.Build(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to build summarization messages: %w", err)
 	}
@@ -564,14 +536,6 @@ func (a *ReactAgent) summarizeCompletedPlan(ctx context.Context, plan *types.Pla
 	}
 
 	return nil
-}
-
-// generateTaskID creates a unique task identifier based on the description hash
-func generateTaskID(task *types.TaskUpdate) string {
-	hasher := md5.New()
-	hasher.Write([]byte(task.Description))
-	hash := hex.EncodeToString(hasher.Sum(nil))[:8]
-	return fmt.Sprintf("task_%s", hash)
 }
 
 // autoStartNextPendingTask automatically sets the first pending task to inprogress
