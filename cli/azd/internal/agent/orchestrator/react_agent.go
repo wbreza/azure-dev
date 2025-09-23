@@ -10,6 +10,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,6 +102,10 @@ func (a *ReactAgent) SendMessage(ctx context.Context, args ...string) (string, e
 		// Auto-advance to next pending task if no task is currently in progress
 		a.autoStartNextPendingTask()
 
+		// Write the indented JSON of the current plan to a log file next to the executable.
+		// Best-effort: do not fail the agent if logging fails.
+		a.logCurrentPlan()
+
 		// Generate response using React pattern
 		result, err := a.generateReactResponse(ctx)
 		if err != nil {
@@ -168,12 +175,19 @@ func (a *ReactAgent) generateReactResponse(ctx context.Context) (*types.ReactPro
 		WithConversation(a.config.conversation),
 	}
 
+	// Load current tool history and current task into context
+	currentTask := a.currentPlan.GetCurrentTask()
+	if currentTask != nil {
+		options = append(options, WithContext("Tool History", currentTask.ToolHistory))
+		options = append(options, WithContext("Current Task", currentTask))
+	}
+
 	// Get tool history for current inprogress task
 	if currentTask := a.currentPlan.GetCurrentTask(); currentTask != nil && len(currentTask.ToolHistory) > 0 {
 		options = append(options, WithContext("Tool History", currentTask.ToolHistory))
 	}
 
-	options = append(options, WithContext("Current Plan", a.currentPlan))
+	options = append(options, WithContext("Plan Context", a.currentPlan))
 
 	// Build the prompt using the accumulated options
 	promptBuilder := NewPromptBuilder(options...)
@@ -222,23 +236,6 @@ func (a *ReactAgent) applyPlanUpdates(ctx context.Context, planUpdates []*types.
 			a.currentPlan.Goal = update.Goal
 		}
 
-		if update.OverallStatus != "" && a.currentPlan.CanTransitionTo(update.OverallStatus) {
-			a.currentPlan.Status = update.OverallStatus
-		}
-
-		a.currentPlan.UpdatedAt = time.Now()
-
-		// Ensure we have a plan to work with
-		if a.currentPlan == nil {
-			a.currentPlan = &types.Plan{
-				Goal:      "",
-				Status:    types.PlanPending,
-				Tasks:     []*types.Task{},
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			}
-		}
-
 		// Add new tasks
 		for _, taskUpdate := range update.AddTasks {
 			newTask := &types.Task{
@@ -254,68 +251,72 @@ func (a *ReactAgent) applyPlanUpdates(ctx context.Context, planUpdates []*types.
 		}
 
 		// Modify existing tasks
-		for _, taskUpdate := range update.ModifyTasks {
-			for _, task := range a.currentPlan.Tasks {
-				if task.ID == taskUpdate.ID {
-					if task.IsTerminal() {
-						continue
-					}
-					if taskUpdate.Description != "" {
-						task.Description = taskUpdate.Description
-					}
-					if taskUpdate.Status != "" {
-						// Special handling for InProgress status - ensure only one task can be in progress
-						if taskUpdate.Status == types.TaskInProgress {
-							// Check if there's already a task in progress
-							currentInProgress := a.currentPlan.GetCurrentTask()
-							if currentInProgress != nil && currentInProgress.ID != task.ID {
-								// Silently ignore - only one task can be in progress at a time
-								continue
-							}
-						}
+		allowedModifyTransitions := []types.TaskStatus{
+			types.TaskInProgress,
+			types.TaskBlocked,
+			types.TaskObsolete,
+		}
 
-						// Validate status transition before applying
-						if task.CanTransitionTo(taskUpdate.Status) {
-							task.Status = taskUpdate.Status
-						}
-						// Silently ignore invalid status transitions
-					}
-					if len(taskUpdate.Evidence) > 0 {
-						task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
-					}
-					if len(taskUpdate.Requirements) > 0 {
-						task.Requirements = appendDistinct(task.Requirements, taskUpdate.Requirements)
-					}
-					if len(taskUpdate.Rules) > 0 {
-						task.Rules = appendDistinct(task.Rules, taskUpdate.Rules)
-					}
-					break
+		for _, taskUpdate := range update.ModifyTasks {
+			if !slices.Contains(allowedModifyTransitions, taskUpdate.Status) {
+				continue
+			}
+
+			for _, task := range a.currentPlan.Tasks {
+				if task.ID != taskUpdate.ID || task.IsTerminal() {
+					continue
 				}
+
+				task.Status = taskUpdate.Status
+
+				if taskUpdate.Description != "" {
+					task.Description = taskUpdate.Description
+				}
+				if len(taskUpdate.Evidence) > 0 {
+					task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
+				}
+				if len(taskUpdate.Requirements) > 0 {
+					task.Requirements = appendDistinct(task.Requirements, taskUpdate.Requirements)
+				}
+				if len(taskUpdate.Rules) > 0 {
+					task.Rules = appendDistinct(task.Rules, taskUpdate.Rules)
+				}
+
+				task.UpdatedAt = time.Now()
 			}
 		}
 
 		// Complete tasks (set status to complete)
 		for _, taskUpdate := range update.CompleteTasks {
 			for _, task := range a.currentPlan.Tasks {
-				if task.ID == taskUpdate.ID {
-					if task.Status != types.TaskInProgress {
-						continue
-					}
-
-					if len(taskUpdate.Evidence) > 0 {
-						task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
-					}
-
-					// Summarize tool history before marking complete
-					if len(task.ToolHistory) > 0 {
-						if err := a.summarizeCompletedTask(ctx, task); err != nil {
-							return fmt.Errorf("failed to summarize completed task %s: %w", task.ID, err)
-						}
-					}
-
-					task.Status = types.TaskComplete
-					break
+				if task.ID != taskUpdate.ID || task.Status != types.TaskInProgress {
+					continue
 				}
+
+				if len(taskUpdate.Evidence) > 0 {
+					task.Evidence = appendDistinct(task.Evidence, taskUpdate.Evidence)
+				}
+
+				// Summarize tool history before marking complete
+				if len(task.ToolHistory) > 0 {
+					if err := a.summarizeCompletedTask(ctx, task); err != nil {
+						return fmt.Errorf("failed to summarize completed task %s: %w", task.ID, err)
+					}
+				}
+
+				task.Status = types.TaskComplete
+				task.UpdatedAt = time.Now()
+				break
+			}
+		}
+
+		if update.OverallStatus != "" && a.currentPlan.CanTransitionTo(update.OverallStatus) {
+			if update.OverallStatus == types.PlanComplete {
+				if a.currentPlan.TasksComplete() {
+					a.currentPlan.Status = types.PlanComplete
+				}
+			} else {
+				a.currentPlan.Status = update.OverallStatus
 			}
 		}
 
@@ -593,4 +594,32 @@ func (a *ReactAgent) autoStartNextPendingTask() {
 			return
 		}
 	}
+}
+
+// logCurrentPlan writes indented JSON of the current plan to `agent.log` next to the executable.
+// This is best-effort and intentionally does not touch conversation history or affect agent flow.
+func (a *ReactAgent) logCurrentPlan() {
+	if a.currentPlan == nil {
+		return
+	}
+
+	b, err := json.MarshalIndent(a.currentPlan, "", "  ")
+	if err != nil {
+		return
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	logPath := filepath.Join(filepath.Dir(exePath), "agent.log")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	ts := time.Now().Format(time.RFC3339)
+	_, _ = f.WriteString(fmt.Sprintf("[%s] Current Plan:\n%s\n==========================================\n", ts, string(b)))
 }
