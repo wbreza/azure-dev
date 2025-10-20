@@ -7,13 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"sync"
 
 	"github.com/azure/azure-dev/cli/azd/internal/mapper"
 	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/azdext"
 	"github.com/azure/azure-dev/cli/azd/pkg/extensions"
+	"github.com/azure/azure-dev/cli/azd/pkg/grpc/streaming"
 	"github.com/azure/azure-dev/cli/azd/pkg/input"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
 	"github.com/google/uuid"
@@ -39,13 +38,11 @@ func (et *externalTool) Name() string {
 }
 
 type ExternalFrameworkService struct {
-	extension    *extensions.Extension
-	languageName string
-	languageKind ServiceLanguageKind
-	console      input.Console
-
-	stream        azdext.FrameworkService_StreamServer
-	responseChans sync.Map
+	extension     *extensions.Extension
+	languageName  string
+	languageKind  ServiceLanguageKind
+	console       input.Console
+	streamManager *streaming.StreamRequestManager[*azdext.FrameworkServiceMessage]
 }
 
 // NewExternalFrameworkService creates a new external framework service
@@ -57,16 +54,35 @@ func NewExternalFrameworkService(
 	console input.Console,
 ) FrameworkService {
 	service := &ExternalFrameworkService{
-		extension:    extension,
-		languageName: name,
-		languageKind: kind,
-		console:      console,
-		stream:       stream,
+		extension:     extension,
+		languageName:  name,
+		languageKind:  kind,
+		console:       console,
+		streamManager: streaming.NewStreamRequestManager(stream),
 	}
 
-	service.startResponseDispatcher()
-
 	return service
+}
+
+// progressAdapter adapts async.Progress[ServiceProgress] to streaming.ProgressReporter
+type progressAdapter struct {
+	progress *async.Progress[ServiceProgress]
+}
+
+func (p *progressAdapter) SetProgress(value any) {
+	if p.progress != nil && value != nil {
+		if message, ok := value.(string); ok {
+			p.progress.SetProgress(NewServiceProgress(message))
+		}
+	}
+}
+
+// newProgressAdapter creates a new progress adapter
+func newProgressAdapter(progress *async.Progress[ServiceProgress]) streaming.ProgressReporter {
+	if progress == nil {
+		return nil
+	}
+	return &progressAdapter{progress: progress}
 }
 
 // RequiredExternalTools gets a list of the required external tools for the framework service
@@ -75,8 +91,8 @@ func (efs *ExternalFrameworkService) RequiredExternalTools(
 	serviceConfig *ServiceConfig,
 ) []tools.ExternalTool {
 	// Convert serviceConfig to gRPC proto
-	protoServiceConfig, err := efs.toProtoServiceConfig(serviceConfig)
-	if err != nil {
+	var protoServiceConfig *azdext.ServiceConfig
+	if err := mapper.Convert(serviceConfig, &protoServiceConfig); err != nil {
 		return nil
 	}
 
@@ -89,9 +105,7 @@ func (efs *ExternalFrameworkService) RequiredExternalTools(
 		},
 	}
 
-	resp, err := efs.sendAndWait(ctx, req, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetRequiredExternalToolsResponse() != nil
-	})
+	resp, err := efs.streamManager.Send(ctx, req)
 	if err != nil {
 		return nil
 	}
@@ -120,9 +134,9 @@ func (efs *ExternalFrameworkService) Initialize(ctx context.Context, serviceConf
 		return errors.New("service configuration is required")
 	}
 
-	protoServiceConfig, err := efs.toProtoServiceConfig(serviceConfig)
-	if err != nil {
-		return err
+	var protoServiceConfig *azdext.ServiceConfig
+	if err := mapper.Convert(serviceConfig, &protoServiceConfig); err != nil {
+		return nil
 	}
 
 	req := &azdext.FrameworkServiceMessage{
@@ -134,9 +148,8 @@ func (efs *ExternalFrameworkService) Initialize(ctx context.Context, serviceConf
 		},
 	}
 
-	_, err = efs.sendAndWait(ctx, req, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetInitializeResponse() != nil
-	})
+	_, err := efs.streamManager.Send(ctx, req)
+
 	return err
 }
 
@@ -152,9 +165,7 @@ func (efs *ExternalFrameworkService) Requirements() FrameworkRequirements {
 		},
 	}
 
-	resp, err := efs.sendAndWait(ctx, req, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetRequirementsResponse() != nil
-	})
+	resp, err := efs.streamManager.Send(ctx, req)
 	if err != nil {
 		// Return default requirements on error
 		return FrameworkRequirements{
@@ -195,8 +206,8 @@ func (efs *ExternalFrameworkService) Restore(
 	serviceContext *ServiceContext,
 	progress *async.Progress[ServiceProgress],
 ) (*ServiceRestoreResult, error) {
-	protoServiceConfig, err := efs.toProtoServiceConfig(serviceConfig)
-	if err != nil {
+	var protoServiceConfig *azdext.ServiceConfig
+	if err := mapper.Convert(serviceConfig, &protoServiceConfig); err != nil {
 		return nil, err
 	}
 
@@ -209,9 +220,7 @@ func (efs *ExternalFrameworkService) Restore(
 		},
 	}
 
-	resp, err := efs.sendAndWaitWithProgress(ctx, req, progress, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetRestoreResponse() != nil
-	})
+	resp, err := efs.streamManager.SendWithProgress(ctx, req, newProgressAdapter(progress))
 	if err != nil {
 		return nil, err
 	}
@@ -257,9 +266,7 @@ func (efs *ExternalFrameworkService) Build(
 		},
 	}
 
-	resp, err := efs.sendAndWaitWithProgress(ctx, req, progress, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetBuildResponse() != nil
-	})
+	resp, err := efs.streamManager.SendWithProgress(ctx, req, newProgressAdapter(progress))
 	if err != nil {
 		return nil, err
 	}
@@ -305,9 +312,7 @@ func (efs *ExternalFrameworkService) Package(
 		},
 	}
 
-	resp, err := efs.sendAndWaitWithProgress(ctx, req, progress, func(r *azdext.FrameworkServiceMessage) bool {
-		return r.GetPackageResponse() != nil
-	})
+	resp, err := efs.streamManager.SendWithProgress(ctx, req, newProgressAdapter(progress))
 	if err != nil {
 		return nil, err
 	}
@@ -324,128 +329,4 @@ func (efs *ExternalFrameworkService) Package(
 	}
 
 	return result, nil
-}
-
-// Private methods for gRPC communication
-
-// helper to send a request and wait for the matching response using async dispatcher
-func (efs *ExternalFrameworkService) sendAndWait(
-	ctx context.Context,
-	req *azdext.FrameworkServiceMessage,
-	match func(*azdext.FrameworkServiceMessage) bool,
-) (*azdext.FrameworkServiceMessage, error) {
-	// Create a response channel for this request
-	respChan := make(chan *azdext.FrameworkServiceMessage, 1)
-	efs.responseChans.Store(req.RequestId, respChan)
-	defer efs.responseChans.Delete(req.RequestId)
-
-	// Send the request
-	if err := efs.stream.Send(req); err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	// Wait for response via the async dispatcher
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case resp, ok := <-respChan:
-		if !ok {
-			return nil, fmt.Errorf("response channel closed")
-		}
-
-		if resp.Error != nil {
-			return nil, fmt.Errorf("framework service error: %s", resp.Error.Message)
-		}
-
-		if !match(resp) {
-			return nil, fmt.Errorf("received unexpected response type")
-		}
-
-		return resp, nil
-	}
-}
-
-// helper to send a request, handle progress updates, and wait for the matching response
-func (efs *ExternalFrameworkService) sendAndWaitWithProgress(
-	ctx context.Context,
-	req *azdext.FrameworkServiceMessage,
-	progress *async.Progress[ServiceProgress],
-	match func(*azdext.FrameworkServiceMessage) bool,
-) (*azdext.FrameworkServiceMessage, error) {
-	respChan := make(chan *azdext.FrameworkServiceMessage, 1)
-	efs.responseChans.Store(req.RequestId, respChan)
-	defer efs.responseChans.Delete(req.RequestId)
-
-	if err := efs.stream.Send(req); err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case resp := <-respChan:
-			if resp == nil {
-				return nil, fmt.Errorf("stream closed")
-			}
-
-			if resp.Error != nil {
-				return nil, fmt.Errorf("framework service error: %s", resp.Error.Message)
-			}
-
-			if progressMsg := resp.GetProgressMessage(); progressMsg != nil {
-				if progress != nil {
-					progress.SetProgress(ServiceProgress{
-						Message: progressMsg.Message,
-					})
-				}
-				continue // Wait for the actual response
-			}
-
-			if !match(resp) {
-				return nil, fmt.Errorf("received unexpected response type")
-			}
-
-			return resp, nil
-		}
-	}
-}
-
-// goroutine to receive and dispatch responses
-func (efs *ExternalFrameworkService) startResponseDispatcher() {
-	go func() {
-		for {
-			resp, err := efs.stream.Recv()
-			if err != nil {
-				// propagate error to all waiting calls
-				efs.responseChans.Range(func(key, value any) bool {
-					ch := value.(chan *azdext.FrameworkServiceMessage)
-					close(ch)
-					return true
-				})
-				return
-			}
-			if ch, ok := efs.responseChans.Load(resp.RequestId); ok {
-
-				ch.(chan *azdext.FrameworkServiceMessage) <- resp
-			} else {
-				log.Printf("No response channel found for RequestId: %s", resp.RequestId)
-			}
-		}
-	}()
-}
-
-// Convert ServiceConfig to proto message
-func (efs *ExternalFrameworkService) toProtoServiceConfig(serviceConfig *ServiceConfig) (*azdext.ServiceConfig, error) {
-	if serviceConfig == nil {
-		return nil, nil
-	}
-
-	var protoConfig *azdext.ServiceConfig
-	err := mapper.Convert(serviceConfig, &protoConfig)
-	if err != nil {
-		return nil, fmt.Errorf("converting service config: %w", err)
-	}
-
-	return protoConfig, nil
 }
