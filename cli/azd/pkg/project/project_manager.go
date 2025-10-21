@@ -11,6 +11,7 @@ import (
 
 	"github.com/azure/azure-dev/cli/azd/internal/tracing"
 	"github.com/azure/azure-dev/cli/azd/internal/tracing/fields"
+	"github.com/azure/azure-dev/cli/azd/pkg/async"
 	"github.com/azure/azure-dev/cli/azd/pkg/environment/azdcontext"
 	"github.com/azure/azure-dev/cli/azd/pkg/ext"
 	"github.com/azure/azure-dev/cli/azd/pkg/tools"
@@ -19,6 +20,8 @@ import (
 const (
 	ProjectEventDeploy    ext.Event = "deploy"
 	ProjectEventProvision ext.Event = "provision"
+	ProjectEventPackage   ext.Event = "package"
+	ProjectEventPublish   ext.Event = "publish"
 )
 
 var (
@@ -38,6 +41,14 @@ type ProjectManager interface {
 	// with the service config that enables the scenario for these components to add event
 	// handlers to participate in the lifecycle of an azd project
 	Initialize(ctx context.Context, projectConfig *ProjectConfig) error
+
+	// Deploys project
+	Deploy(
+		ctx context.Context,
+		projectConfig *ProjectConfig,
+		projectContext map[string]*ServiceContext,
+		progress *async.Progress[ServiceProgress],
+	) (map[string]*ServiceDeployResult, error)
 
 	// Returns the default service name to target based on the current working directory.
 	//
@@ -106,6 +117,146 @@ func (pm *projectManager) Initialize(ctx context.Context, projectConfig *Project
 	}
 
 	return nil
+}
+
+func (pm *projectManager) Package(
+	ctx context.Context,
+	projectConfig *ProjectConfig,
+	projectContext map[string]*ServiceContext,
+	progress *async.Progress[ServiceProgress],
+	options *PackageOptions,
+) (map[string]*ServicePackageResult, error) {
+	servicesStable, err := pm.importManager.ServiceStable(ctx, projectConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	resultsMap := map[string]*ServicePackageResult{}
+	projectEventArgs := ProjectLifecycleEventArgs{
+		Project: projectConfig,
+	}
+
+	err = projectConfig.Invoke(ctx, ProjectEventPackage, projectEventArgs, func() error {
+		for _, svc := range servicesStable {
+			serviceContext, has := projectContext[svc.Name]
+			if !has {
+				serviceContext = NewServiceContext()
+				projectContext[svc.Name] = serviceContext
+			}
+
+			packageResult, err := pm.serviceManager.Package(ctx, svc, serviceContext, progress, options)
+			if err != nil {
+				return err
+			}
+
+			if err := serviceContext.Package.Add(packageResult.Artifacts...); err != nil {
+				return err
+			}
+
+			resultsMap[svc.Name] = packageResult
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resultsMap, nil
+}
+
+func (pm *projectManager) Publish(
+	ctx context.Context,
+	projectConfig *ProjectConfig,
+	projectContext map[string]*ServiceContext,
+	progress *async.Progress[ServiceProgress],
+	options *PublishOptions,
+) (map[string]*ServicePublishResult, error) {
+	servicesStable, err := pm.importManager.ServiceStable(ctx, projectConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	resultsMap := map[string]*ServicePublishResult{}
+	projectEventArgs := ProjectLifecycleEventArgs{
+		Project: projectConfig,
+	}
+
+	err = projectConfig.Invoke(ctx, ProjectEventPublish, projectEventArgs, func() error {
+		for _, svc := range servicesStable {
+			serviceContext, has := projectContext[svc.Name]
+			if !has {
+				serviceContext = NewServiceContext()
+				projectContext[svc.Name] = serviceContext
+			}
+
+			publishResult, err := pm.serviceManager.Publish(ctx, svc, serviceContext, progress, options)
+			if err != nil {
+				return err
+			}
+
+			if err := serviceContext.Publish.Add(publishResult.Artifacts...); err != nil {
+				return err
+			}
+
+			resultsMap[svc.Name] = publishResult
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resultsMap, nil
+}
+
+func (pm *projectManager) Deploy(
+	ctx context.Context,
+	projectConfig *ProjectConfig,
+	projectContext map[string]*ServiceContext,
+	progress *async.Progress[ServiceProgress],
+) (map[string]*ServiceDeployResult, error) {
+	servicesStable, err := pm.importManager.ServiceStable(ctx, projectConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	resultsMap := map[string]*ServiceDeployResult{}
+	projectEventArgs := ProjectLifecycleEventArgs{
+		Project: projectConfig,
+	}
+
+	err = projectConfig.Invoke(ctx, ProjectEventDeploy, projectEventArgs, func() error {
+		for _, svc := range servicesStable {
+			serviceContext, has := projectContext[svc.Name]
+			if !has {
+				serviceContext = NewServiceContext()
+				projectContext[svc.Name] = serviceContext
+			}
+
+			deployResult, err := pm.serviceManager.Deploy(ctx, svc, serviceContext, progress)
+			if err != nil {
+				return err
+			}
+
+			if err := serviceContext.Deploy.Add(deployResult.Artifacts...); err != nil {
+				return err
+			}
+
+			resultsMap[svc.Name] = deployResult
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resultsMap, nil
 }
 
 // Returns the default service name to target based on the current working directory.

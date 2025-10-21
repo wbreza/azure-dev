@@ -35,7 +35,23 @@ func newListenCommand() *cobra.Command {
 				WithFrameworkService("rust", frameworkServiceProvider).
 				WithProjectEventHandler("preprovision", func(ctx context.Context, args *azdext.ProjectEventArgs) error {
 					for i := 1; i <= 20; i++ {
-						fmt.Printf("%d. Doing important work in extension...\n", i)
+						fmt.Printf("%d. Doing important preprovision work in extension...\n", i)
+						time.Sleep(250 * time.Millisecond)
+					}
+
+					return nil
+				}).
+				WithProjectEventHandler("predeploy", func(ctx context.Context, args *azdext.ProjectEventArgs) error {
+					for i := 1; i <= 20; i++ {
+						fmt.Printf("%d. Doing important predeploy work in extension...\n", i)
+						time.Sleep(250 * time.Millisecond)
+					}
+
+					return nil
+				}).
+				WithProjectEventHandler("postdeploy", func(ctx context.Context, args *azdext.ProjectEventArgs) error {
+					for i := 1; i <= 20; i++ {
+						fmt.Printf("%d. Doing important postdeploy work in extension...\n", i)
 						time.Sleep(250 * time.Millisecond)
 					}
 
@@ -43,7 +59,7 @@ func newListenCommand() *cobra.Command {
 				}).
 				WithServiceEventHandler("prepackage", func(ctx context.Context, args *azdext.ServiceEventArgs) error {
 					for i := 1; i <= 20; i++ {
-						fmt.Printf("%d. Doing important work in extension...\n", i)
+						fmt.Printf("%d. Doing important prepackage work in extension...\n", i)
 						time.Sleep(250 * time.Millisecond)
 					}
 

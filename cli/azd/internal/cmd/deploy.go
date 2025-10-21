@@ -226,6 +226,24 @@ func (da *DeployAction) Run(ctx context.Context) (*actions.ActionResult, error) 
 
 	startTime := time.Now()
 
+	projectContext := map[string]*project.ServiceContext{}
+	progress := async.NewProgress[project.ServiceProgress]()
+
+	// --from-package set, skip packaging and create package artifact
+	if da.flags.fromPackage != "" {
+		serviceContext := project.NewServiceContext()
+		serviceContext.Package = project.ArtifactCollection{
+			{
+				Kind:         determineArtifactKind(da.flags.fromPackage),
+				Location:     da.flags.fromPackage,
+				LocationKind: project.LocationKindLocal,
+			}
+		}
+		projectContext[targetServiceName] = serviceContext
+	}
+
+	results, err := da.projectManager.Deploy(ctx, da.projectConfig, projectContext, progress)
+
 	deployResults := map[string]*project.ServiceDeployResult{}
 	stableServices, err := da.importManager.ServiceStable(ctx, da.projectConfig)
 	if err != nil {
