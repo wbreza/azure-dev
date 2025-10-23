@@ -167,8 +167,7 @@ func (p *AgentServiceTargetProvider) Package(
 			return nil, fmt.Errorf("failed packaging container: %w", err)
 		}
 
-		serviceContext.Package = append(serviceContext.Package, packageResponse.Result.Artifacts...)
-		newArtifacts = append(serviceContext.Package, packageResponse.Result.Artifacts...)
+		newArtifacts = append(newArtifacts, packageResponse.Result.Artifacts...)
 	}
 
 	return &azdext.ServicePackageResult{
