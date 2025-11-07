@@ -4,4 +4,5 @@ use (
 	../../
 	./extensions/azure.ai.agents
 	./extensions/azure.coding-agent
+	./extensions/microsoft.azd.exec
 )

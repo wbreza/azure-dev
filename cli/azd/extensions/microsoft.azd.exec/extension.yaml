@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../extension.schema.json
+id: microsoft.azd.exec
+namespace: exec
+displayName: Exec Extension
+description: Execute arbitrary scripts and commands with azd environment variables loaded
+usage: azd exec <command> [args...]
+version: 0.1.0
+language: go
+capabilities:
+  - custom-commands
+examples:
+  - name: Run Python script
+    description: Execute a Python script with azd environment variables
+    usage: azd exec python3 main.py
+  - name: Run shell script
+    description: Execute a shell script with azd environment variables
+    usage: azd exec ./deploy.sh
+  - name: Run any command
+    description: Execute any command with azd environment variables
+    usage: azd exec npm run build
