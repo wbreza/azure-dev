@@ -262,9 +262,10 @@ func TestValidateRegistry_SchemaVersion(t *testing.T) {
 			expectValid:   true,
 		},
 		{
-			name:          "valid schemaVersion 2.5",
-			schemaVersion: "2.5",
-			expectValid:   true,
+			name:           "valid schemaVersion 2.5",
+			schemaVersion:  "2.5",
+			expectValid:    true,
+			expectWarnings: 1,
 		},
 		{
 			name:          "invalid format produces error",

@@ -510,6 +510,60 @@ func issueMessages(issues []ValidationIssue) []string {
 	return msgs
 }
 
+func TestValidateRegistry_SchemaVersion_StrictMissing(t *testing.T) {
+	registry := &Registry{
+		SchemaVersion: "",
+		Extensions:    []*ExtensionMetadata{},
+	}
+
+	result := ValidateRegistry(registry, true)
+	require.False(t, result.Valid, "strict mode should fail when schemaVersion is missing")
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Severity == ValidationError && strings.Contains(issue.Message, "missing required 'schemaVersion' field") {
+			found = true
+		}
+	}
+	require.True(t, found, "expected error for missing schemaVersion in strict mode")
+}
+
+func TestValidateRegistry_SchemaVersion_ExceedsMaxMajor(t *testing.T) {
+	registry := &Registry{
+		SchemaVersion: "2.0.0",
+		Extensions:    []*ExtensionMetadata{},
+	}
+
+	result := ValidateRegistry(registry, false)
+	require.True(t, result.Valid, "exceeding max major version should be a warning in non-strict mode")
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Severity == ValidationWarning && strings.Contains(issue.Message, "exceeds the maximum supported major version") {
+			found = true
+		}
+	}
+	require.True(t, found, "expected warning for schemaVersion exceeding max major version")
+}
+
+func TestValidateRegistry_SchemaVersion_StrictExceedsMaxMajor(t *testing.T) {
+	registry := &Registry{
+		SchemaVersion: "2.0.0",
+		Extensions:    []*ExtensionMetadata{},
+	}
+
+	result := ValidateRegistry(registry, true)
+	require.False(t, result.Valid, "strict mode should fail when schemaVersion exceeds max major version")
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Severity == ValidationError && strings.Contains(issue.Message, "exceeds the maximum supported major version") {
+			found = true
+		}
+	}
+	require.True(t, found, "expected error for schemaVersion exceeding max major version in strict mode")
+}
+
 func TestValidateExtensions_NilExtensionEntry(t *testing.T) {
 	result := ValidateExtensions([]*ExtensionMetadata{nil}, false)
 	require.False(t, result.Valid)

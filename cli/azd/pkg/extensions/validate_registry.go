@@ -125,18 +125,39 @@ func validateSchemaVersion(
 	strict bool,
 ) {
 	if schemaVersion == "" {
-		result.addWarning(
-			"missing 'schemaVersion' field; " +
-				"consider adding a schema version for forward compatibility",
-		)
+		if strict {
+			result.addError("missing required 'schemaVersion' field")
+		} else {
+			result.addWarning(
+				"missing 'schemaVersion' field; " +
+					"consider adding a schema version for forward compatibility",
+			)
+		}
 		return
 	}
 
-	if _, err := semver.NewVersion(schemaVersion); err != nil {
+	v, err := semver.NewVersion(schemaVersion)
+	if err != nil {
 		result.addError(fmt.Sprintf(
 			"invalid schemaVersion format %q: %v",
 			schemaVersion, err,
 		))
+		return
+	}
+
+	if v.Major() > uint64(MaxSupportedMajorVersion) {
+		if strict {
+			result.addError(fmt.Sprintf(
+				"schemaVersion %q has major version %d which exceeds the maximum supported major version %d",
+				schemaVersion, v.Major(), MaxSupportedMajorVersion,
+			))
+		} else {
+			result.addWarning(fmt.Sprintf(
+				"schemaVersion %q has major version %d which exceeds the maximum supported major version %d; "+
+					"this registry may not be fully compatible with the current version of azd",
+				schemaVersion, v.Major(), MaxSupportedMajorVersion,
+			))
+		}
 	}
 }
 
